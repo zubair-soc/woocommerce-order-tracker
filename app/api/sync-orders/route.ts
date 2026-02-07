@@ -4,17 +4,31 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET() {
   try {
-    // Fetch orders from WooCommerce
-    const response = await wooApi.get('orders', {
-      per_page: 100, // Adjust as needed
-      orderby: 'date',
-      order: 'desc',
-    })
+    let allOrders: WooCommerceOrder[] = []
+    let page = 1
+    let hasMorePages = true
+    const perPage = 100
 
-    const orders: WooCommerceOrder[] = response.data
+    // Fetch all pages of orders from WooCommerce
+    while (hasMorePages) {
+      const response = await wooApi.get('orders', {
+        per_page: perPage,
+        page: page,
+        orderby: 'date',
+        order: 'desc',
+      })
+
+      const orders: WooCommerceOrder[] = response.data
+      allOrders = [...allOrders, ...orders]
+
+      // Check if there are more pages
+      const totalPages = parseInt(response.headers['x-wp-totalpages'] || '1')
+      hasMorePages = page < totalPages
+      page++
+    }
 
     // Transform and insert orders into Supabase
-    const ordersToInsert = orders.map((order) => ({
+    const ordersToInsert = allOrders.map((order) => ({
       order_id: order.id,
       order_number: order.number,
       date_created: order.date_created,
@@ -49,8 +63,9 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      message: `Synced ${orders.length} orders`,
-      count: orders.length,
+      message: `Synced ${allOrders.length} orders from ${page - 1} page(s)`,
+      count: allOrders.length,
+      pages: page - 1,
     })
   } catch (error: any) {
     console.error('Sync error:', error)

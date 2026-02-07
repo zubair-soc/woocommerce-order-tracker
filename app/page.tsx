@@ -12,6 +12,7 @@ export default function Home() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [productTypeFilter, setProductTypeFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
@@ -55,6 +56,31 @@ export default function Home() {
   useEffect(() => {
     let filtered = [...orders]
 
+    // Helper function to categorize product
+    const getProductType = (order: Order): string => {
+      if (!order.products || !Array.isArray(order.products)) return 'Other'
+      
+      const productNames = order.products.map((p: any) => p.name?.toLowerCase() || '').join(' ')
+      
+      // Check for Beginner Hockey
+      if (productNames.includes('beginner hockey') || productNames.includes('pre-beginner')) {
+        return 'Beginner Hockey'
+      }
+      
+      // Check for Skills Development
+      if (
+        productNames.includes('powerskating') ||
+        productNames.includes('power skating') ||
+        productNames.includes('shooting & puck handling') ||
+        productNames.includes('goalie camp')
+      ) {
+        return 'Skills Development'
+      }
+      
+      // Everything else is Merchandise
+      return 'Merchandise'
+    }
+
     // Search filter (name, email, order number)
     if (searchTerm) {
       filtered = filtered.filter(
@@ -71,6 +97,11 @@ export default function Home() {
       filtered = filtered.filter((order) => order.status === statusFilter)
     }
 
+    // Product type filter
+    if (productTypeFilter) {
+      filtered = filtered.filter((order) => getProductType(order) === productTypeFilter)
+    }
+
     // Date range filter
     if (dateFrom) {
       filtered = filtered.filter(
@@ -84,7 +115,7 @@ export default function Home() {
     }
 
     setFilteredOrders(filtered)
-  }, [searchTerm, statusFilter, dateFrom, dateTo, orders])
+  }, [searchTerm, statusFilter, productTypeFilter, dateFrom, dateTo, orders])
 
   useEffect(() => {
     fetchOrders()
@@ -185,6 +216,27 @@ export default function Home() {
 
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+              Product Type
+            </label>
+            <select
+              value={productTypeFilter}
+              onChange={(e) => setProductTypeFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+              }}
+            >
+              <option value="">All Products</option>
+              <option value="Beginner Hockey">Beginner Hockey</option>
+              <option value="Skills Development">Skills Development</option>
+              <option value="Merchandise">Merchandise</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
               From Date
             </label>
             <input
@@ -218,11 +270,12 @@ export default function Home() {
           </div>
         </div>
 
-        {(searchTerm || statusFilter || dateFrom || dateTo) && (
+        {(searchTerm || statusFilter || productTypeFilter || dateFrom || dateTo) && (
           <button
             onClick={() => {
               setSearchTerm('')
               setStatusFilter('')
+              setProductTypeFilter('')
               setDateFrom('')
               setDateTo('')
             }}
