@@ -12,9 +12,13 @@ export default function Home() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [productTypeFilter, setProductTypeFilter] = useState('')
+  const [selectedCourses, setSelectedCourses] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const ordersPerPage = 100
 
   // Fetch orders from Supabase
   const fetchOrders = async () => {
@@ -67,11 +71,12 @@ export default function Home() {
         return 'Beginner Hockey'
       }
       
-      // Check for Skills Development
+      // Check for Skills Development (fixed keywords)
       if (
         productNames.includes('powerskating') ||
         productNames.includes('power skating') ||
         productNames.includes('shooting & puck handling') ||
+        productNames.includes('shooting and puck handling') ||
         productNames.includes('goalie camp')
       ) {
         return 'Skills Development'
@@ -79,6 +84,12 @@ export default function Home() {
       
       // Everything else is Merchandise
       return 'Merchandise'
+    }
+
+    // Get all product names from an order
+    const getProductNames = (order: Order): string[] => {
+      if (!order.products || !Array.isArray(order.products)) return []
+      return order.products.map((p: any) => p.name || '')
     }
 
     // Search filter (name, email, order number)
@@ -97,9 +108,12 @@ export default function Home() {
       filtered = filtered.filter((order) => order.status === statusFilter)
     }
 
-    // Product type filter
-    if (productTypeFilter) {
-      filtered = filtered.filter((order) => getProductType(order) === productTypeFilter)
+    // Course multi-select filter
+    if (selectedCourses.length > 0) {
+      filtered = filtered.filter((order) => {
+        const orderProducts = getProductNames(order)
+        return orderProducts.some(product => selectedCourses.includes(product))
+      })
     }
 
     // Date range filter
@@ -115,7 +129,87 @@ export default function Home() {
     }
 
     setFilteredOrders(filtered)
-  }, [searchTerm, statusFilter, productTypeFilter, dateFrom, dateTo, orders])
+    setCurrentPage(1) // Reset to page 1 when filters change
+  }, [searchTerm, statusFilter, selectedCourses, dateFrom, dateTo, orders])
+
+  // Get paginated orders
+  const indexOfLastOrder = currentPage * ordersPerPage
+  const indexOfFirstOrder = indexOfLastOrder - ordersPerPage
+  const currentOrders = filteredOrders.slice(indexOfFirstOrder, indexOfLastOrder)
+  const totalPages = Math.ceil(filteredOrders.length / ordersPerPage)
+
+  // Get unique courses grouped by category
+  const getCoursesByCategory = () => {
+    const courseMap: { [key: string]: Set<string> } = {
+      'Beginner Hockey': new Set(),
+      'Skills Development': new Set(),
+      'Merchandise': new Set(),
+    }
+
+    orders.forEach((order) => {
+      if (!order.products || !Array.isArray(order.products)) return
+      
+      order.products.forEach((product: any) => {
+        const productName = product.name
+        if (!productName) return
+
+        const productLower = productName.toLowerCase()
+        
+        if (productLower.includes('beginner hockey') || productLower.includes('pre-beginner')) {
+          courseMap['Beginner Hockey'].add(productName)
+        } else if (
+          productLower.includes('powerskating') ||
+          productLower.includes('power skating') ||
+          productLower.includes('shooting & puck handling') ||
+          productLower.includes('shooting and puck handling') ||
+          productLower.includes('goalie camp')
+        ) {
+          courseMap['Skills Development'].add(productName)
+        } else {
+          courseMap['Merchandise'].add(productName)
+        }
+      })
+    })
+
+    return {
+      'Beginner Hockey': Array.from(courseMap['Beginner Hockey']).sort(),
+      'Skills Development': Array.from(courseMap['Skills Development']).sort(),
+      'Merchandise': Array.from(courseMap['Merchandise']).sort(),
+    }
+  }
+
+  const coursesByCategory = getCoursesByCategory()
+
+  // Toggle course selection
+  const toggleCourse = (courseName: string) => {
+    setSelectedCourses(prev =>
+      prev.includes(courseName)
+        ? prev.filter(c => c !== courseName)
+        : [...prev, courseName]
+    )
+  }
+
+  // Toggle all courses in a category
+  const toggleCategory = (category: string) => {
+    const categoryCourses = coursesByCategory[category as keyof typeof coursesByCategory]
+    const allSelected = categoryCourses.every(course => selectedCourses.includes(course))
+    
+    if (allSelected) {
+      // Deselect all in category
+      setSelectedCourses(prev => prev.filter(c => !categoryCourses.includes(c)))
+    } else {
+      // Select all in category
+      setSelectedCourses(prev => {
+        const newSelection = [...prev]
+        categoryCourses.forEach(course => {
+          if (!newSelection.includes(course)) {
+            newSelection.push(course)
+          }
+        })
+        return newSelection
+      })
+    }
+  }
 
   useEffect(() => {
     fetchOrders()
@@ -216,27 +310,6 @@ export default function Home() {
 
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Product Type
-            </label>
-            <select
-              value={productTypeFilter}
-              onChange={(e) => setProductTypeFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-              }}
-            >
-              <option value="">All Products</option>
-              <option value="Beginner Hockey">Beginner Hockey</option>
-              <option value="Skills Development">Skills Development</option>
-              <option value="Merchandise">Merchandise</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
               From Date
             </label>
             <input
@@ -270,12 +343,100 @@ export default function Home() {
           </div>
         </div>
 
-        {(searchTerm || statusFilter || productTypeFilter || dateFrom || dateTo) && (
+        {/* Nested Course Filter */}
+        <div style={{ marginTop: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '1rem', fontWeight: '600', fontSize: '1.1rem' }}>
+            Filter by Course
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {Object.entries(coursesByCategory).map(([category, courses]) => {
+              if (courses.length === 0) return null
+              const allSelected = courses.every(course => selectedCourses.includes(course))
+              const someSelected = courses.some(course => selectedCourses.includes(course))
+              
+              return (
+                <div key={category} style={{ 
+                  border: '1px solid #e5e5e5',
+                  borderRadius: '6px',
+                  padding: '1rem',
+                  backgroundColor: '#fafafa'
+                }}>
+                  {/* Category Header */}
+                  <div style={{ 
+                    marginBottom: '0.75rem',
+                    paddingBottom: '0.5rem',
+                    borderBottom: '1px solid #e5e5e5'
+                  }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '1rem'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someSelected && !allSelected
+                        }}
+                        onChange={() => toggleCategory(category)}
+                        style={{ 
+                          marginRight: '0.5rem',
+                          cursor: 'pointer',
+                          width: '18px',
+                          height: '18px'
+                        }}
+                      />
+                      {category} ({courses.length})
+                    </label>
+                  </div>
+                  
+                  {/* Individual Courses */}
+                  <div style={{ 
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                    gap: '0.5rem',
+                    paddingLeft: '1.5rem'
+                  }}>
+                    {courses.map(course => (
+                      <label
+                        key={course}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          padding: '0.25rem',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedCourses.includes(course)}
+                          onChange={() => toggleCourse(course)}
+                          style={{ 
+                            marginRight: '0.5rem',
+                            cursor: 'pointer',
+                            width: '16px',
+                            height: '16px'
+                          }}
+                        />
+                        <span style={{ flex: 1 }}>{course}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {(searchTerm || statusFilter || selectedCourses.length > 0 || dateFrom || dateTo) && (
           <button
             onClick={() => {
               setSearchTerm('')
               setStatusFilter('')
-              setProductTypeFilter('')
+              setSelectedCourses([])
               setDateFrom('')
               setDateTo('')
             }}
@@ -313,7 +474,8 @@ export default function Home() {
         >
           <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Orders</h2>
           <span style={{ color: '#666' }}>
-            Showing {filteredOrders.length} of {orders.length} orders
+            Showing {indexOfFirstOrder + 1}-{Math.min(indexOfLastOrder, filteredOrders.length)} of {filteredOrders.length} filtered orders
+            {filteredOrders.length !== orders.length && ` (${orders.length} total)`}
           </span>
         </div>
 
@@ -339,7 +501,7 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => (
+                {currentOrders.map((order) => (
                   <tr
                     key={order.id}
                     style={{ borderBottom: '1px solid #eee' }}
@@ -401,6 +563,102 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {filteredOrders.length > ordersPerPage && (
+        <div style={{
+          marginTop: '2rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: currentPage === 1 ? '#e5e5e5' : '#0070f3',
+              color: currentPage === 1 ? '#999' : 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            ← Previous
+          </button>
+          
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {/* Show page numbers */}
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum
+              if (totalPages <= 5) {
+                pageNum = i + 1
+              } else if (currentPage <= 3) {
+                pageNum = i + 1
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i
+              } else {
+                pageNum = currentPage - 2 + i
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: currentPage === pageNum ? '#0070f3' : 'white',
+                    color: currentPage === pageNum ? 'white' : '#333',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: currentPage === pageNum ? '600' : '400'
+                  }}
+                >
+                  {pageNum}
+                </button>
+              )
+            })}
+            
+            {totalPages > 5 && currentPage < totalPages - 2 && (
+              <>
+                <span style={{ color: '#999' }}>...</span>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: 'white',
+                    color: '#333',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
+          </div>
+          
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: currentPage === totalPages ? '#e5e5e5' : '#0070f3',
+              color: currentPage === totalPages ? '#999' : 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
