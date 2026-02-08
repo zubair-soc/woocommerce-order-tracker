@@ -26,9 +26,11 @@ export default function ProgramRosterPage() {
   
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [allPrograms, setAllPrograms] = useState<string[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [showRemoved, setShowRemoved] = useState(false)
+  const [showAllProgramsInMove, setShowAllProgramsInMove] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Registration | null>(null)
   const [movingPlayer, setMovingPlayer] = useState<Registration | null>(null)
   
@@ -48,6 +50,15 @@ export default function ProgramRosterPage() {
 
   const fetchRegistrations = async () => {
     setLoading(true)
+    
+    // Fetch products for active filtering
+    const { data: productsData, error: productsError } = await supabase
+      .from('products')
+      .select('*')
+
+    if (!productsError) {
+      setProducts(productsData || [])
+    }
     
     // Helper to check if program is merchandise
     const isMerchandise = (programName: string): boolean => {
@@ -186,6 +197,11 @@ export default function ProgramRosterPage() {
 
   const confirmMove = async (targetProgram: string) => {
     if (!movingPlayer) return
+
+    // Add confirmation
+    if (!confirm(`Move ${movingPlayer.player_name} to:\n\n"${targetProgram}"\n\nConfirm?`)) {
+      return
+    }
 
     const { error: insertError } = await supabase
       .from('program_registrations')
@@ -726,7 +742,9 @@ export default function ProgramRosterPage() {
 
       {/* Edit Player Modal */}
       {editingPlayer && (
-        <div style={{
+        <div 
+          onClick={() => setEditingPlayer(null)}
+          style={{
           position: 'fixed',
           top: 0,
           left: 0,
@@ -738,7 +756,9 @@ export default function ProgramRosterPage() {
           justifyContent: 'center',
           zIndex: 1000,
         }}>
-          <div style={{
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
             backgroundColor: 'white',
             padding: '2rem',
             borderRadius: '8px',
@@ -834,7 +854,9 @@ export default function ProgramRosterPage() {
 
       {/* Move Player Modal */}
       {movingPlayer && (
-        <div style={{
+        <div 
+          onClick={() => setMovingPlayer(null)}
+          style={{
           position: 'fixed',
           top: 0,
           left: 0,
@@ -846,7 +868,9 @@ export default function ProgramRosterPage() {
           justifyContent: 'center',
           zIndex: 1000,
         }}>
-          <div style={{
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
             backgroundColor: 'white',
             padding: '2rem',
             borderRadius: '8px',
@@ -858,39 +882,90 @@ export default function ProgramRosterPage() {
             <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
               Move {movingPlayer.player_name}
             </h3>
-            <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+            <p style={{ marginBottom: '1rem', color: '#666' }}>
               Select the program to move this player to:
             </p>
             
+            {/* Active/All Programs Toggle */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>
+                <input
+                  type="checkbox"
+                  checked={showAllProgramsInMove}
+                  onChange={(e) => setShowAllProgramsInMove(e.target.checked)}
+                  style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+                />
+                Show completed programs
+              </label>
+            </div>
+            
             <div style={{ marginBottom: '1.5rem' }}>
-              {allPrograms.map((program) => (
-                <button
-                  key={program}
-                  onClick={() => confirmMove(program)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '1rem',
-                    marginBottom: '0.5rem',
-                    backgroundColor: 'white',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f0f9ff'
-                    e.currentTarget.style.borderColor = '#0070f3'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white'
-                    e.currentTarget.style.borderColor = '#ddd'
-                  }}
-                >
-                  {program}
-                </button>
-              ))}
+              {(() => {
+                // Helper functions
+                const normalizeProductName = (name: string): string => {
+                  return name
+                    .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
+                    .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
+                    .replace(/\s*-?\s*FULL\s*$/gi, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                }
+
+                const isProgramActive = (programName: string): boolean => {
+                  let product = products?.find(p => normalizeProductName(p.name) === programName)
+                  if (!product) {
+                    const normalizedProgram = normalizeProductName(programName).toLowerCase()
+                    product = products?.find(p => {
+                      const normalizedProduct = normalizeProductName(p.name).toLowerCase()
+                      return normalizedProgram.includes(normalizedProduct) || normalizedProduct.includes(normalizedProgram)
+                    })
+                  }
+                  return product ? product.status === 'publish' : true
+                }
+
+                // Filter programs
+                const filteredPrograms = showAllProgramsInMove 
+                  ? allPrograms 
+                  : allPrograms.filter(p => isProgramActive(p))
+
+                if (filteredPrograms.length === 0) {
+                  return (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
+                      No {showAllProgramsInMove ? '' : 'active '}programs available.
+                      {!showAllProgramsInMove && ' Try checking "Show completed programs".'}
+                    </div>
+                  )
+                }
+
+                return filteredPrograms.map((program) => (
+                  <button
+                    key={program}
+                    onClick={() => confirmMove(program)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '1rem',
+                      marginBottom: '0.5rem',
+                      backgroundColor: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f0f9ff'
+                      e.currentTarget.style.borderColor = '#0070f3'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'white'
+                      e.currentTarget.style.borderColor = '#ddd'
+                    }}
+                  >
+                    {program}
+                  </button>
+                ))
+              })()}
             </div>
 
             <button
