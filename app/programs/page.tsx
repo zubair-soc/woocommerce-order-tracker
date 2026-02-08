@@ -11,25 +11,38 @@ interface ProgramSummary {
   activeCount: number
   category: string
   status: string
+  display_order: number
+  start_date?: string
+  notes?: string
 }
 
 export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'all'>('open_registration')
+  const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'archived' | 'all'>('open_registration')
   const [programStatuses, setProgramStatuses] = useState<{[key: string]: string}>({})
+  const [editingProgram, setEditingProgram] = useState<string | null>(null)
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editNotes, setEditNotes] = useState('')
 
   const fetchPrograms = async () => {
     setLoading(true)
     
-    // Fetch fresh statuses from database every time (don't rely on stale state)
+    // Fetch fresh program settings from database every time
     const statusResponse = await fetch('/api/program-settings')
     const statusData = await statusResponse.json()
     const freshStatuses: {[key: string]: string} = {}
+    const programSettings: {[key: string]: any} = {}
     if (statusData.settings) {
       statusData.settings.forEach((s: any) => {
         freshStatuses[s.program_name] = s.status
+        programSettings[s.program_name] = {
+          status: s.status,
+          display_order: s.display_order || 999,
+          start_date: s.start_date,
+          notes: s.notes
+        }
       })
       setProgramStatuses(freshStatuses) // Update state too
     }
@@ -83,13 +96,19 @@ export default function ProgramsPage() {
       programMap.set(reg.program_name, current)
     })
 
-    let programList: ProgramSummary[] = Array.from(programMap.entries()).map(([name, counts]) => ({
-      name,
-      count: counts.total,
-      activeCount: counts.active,
-      category: getCategory(name),
-      status: freshStatuses[name] || 'open_registration', // Use fresh statuses from database
-    }))
+    let programList: ProgramSummary[] = Array.from(programMap.entries()).map(([name, counts]) => {
+      const settings = programSettings[name] || {}
+      return {
+        name,
+        count: counts.total,
+        activeCount: counts.active,
+        category: getCategory(name),
+        status: settings.status || 'open_registration',
+        display_order: settings.display_order || 999,
+        start_date: settings.start_date,
+        notes: settings.notes
+      }
+    })
 
     // Filter out "Other" category (merchandise that slipped through whitelist)
     programList = programList.filter(p => p.category !== 'Other')
@@ -99,7 +118,7 @@ export default function ProgramsPage() {
       programList = programList.filter(program => program.status === statusFilter)
     }
 
-    // Sort by category first, then alphabetically within category
+    // Sort by category first, then display_order, then alphabetically
     programList.sort((a, b) => {
       if (a.category !== b.category) {
         // Sort categories: Beginner Hockey, Skills Development
@@ -108,6 +127,10 @@ export default function ProgramsPage() {
           'Skills Development': 2,
         }
         return (categoryOrder[a.category] || 999) - (categoryOrder[b.category] || 999)
+      }
+      // Within same category, sort by display_order first, then alphabetically
+      if (a.display_order !== b.display_order) {
+        return a.display_order - b.display_order
       }
       return a.name.localeCompare(b.name)
     })
@@ -160,6 +183,74 @@ export default function ProgramsPage() {
     })
   }
 
+  const moveProgram = async (programName: string, direction: 'up' | 'down') => {
+    const currentIndex = programs.findIndex(p => p.name === programName)
+    if (currentIndex === -1) return
+    
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (targetIndex < 0 || targetIndex >= programs.length) return
+    
+    // Check if both programs are in same category
+    if (programs[currentIndex].category !== programs[targetIndex].category) return
+    
+    // Swap display orders
+    const currentOrder = programs[currentIndex].display_order
+    const targetOrder = programs[targetIndex].display_order
+    
+    // Update both programs in database
+    await fetch('/api/program-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        program_name: programName, 
+        display_order: targetOrder 
+      })
+    })
+    
+    await fetch('/api/program-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        program_name: programs[targetIndex].name, 
+        display_order: currentOrder 
+      })
+    })
+    
+    // Re-fetch to get updated order
+    fetchPrograms()
+  }
+
+  const openEditModal = (program: ProgramSummary) => {
+    setEditingProgram(program.name)
+    setEditStartDate(program.start_date || '')
+    setEditNotes(program.notes || '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingProgram) return
+    
+    await fetch('/api/program-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        program_name: editingProgram,
+        start_date: editStartDate || null,
+        notes: editNotes || null
+      })
+    })
+    
+    // Update local state
+    setPrograms(prev => prev.map(p => 
+      p.name === editingProgram 
+        ? { ...p, start_date: editStartDate, notes: editNotes }
+        : p
+    ))
+    
+    setEditingProgram(null)
+    setEditStartDate('')
+    setEditNotes('')
+  }
+
   useEffect(() => {
     fetchPrograms()
   }, [statusFilter])
@@ -198,6 +289,57 @@ export default function ProgramsPage() {
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
           >
+            {/* Up/Down arrows */}
+            <div style={{
+              display: 'flex',
+              gap: '0.25rem',
+              padding: '0 0.75rem',
+              alignItems: 'center',
+            }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  moveProgram(program.name, 'up')
+                }}
+                disabled={programs.indexOf(program) === 0 || 
+                         (programs.indexOf(program) > 0 && programs[programs.indexOf(program) - 1].category !== program.category)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  opacity: (programs.indexOf(program) === 0 || 
+                           (programs.indexOf(program) > 0 && programs[programs.indexOf(program) - 1].category !== program.category)) ? 0.3 : 1,
+                }}
+                title="Move up"
+              >
+                ↑
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  moveProgram(program.name, 'down')
+                }}
+                disabled={programs.indexOf(program) === programs.length - 1 || 
+                         (programs.indexOf(program) < programs.length - 1 && programs[programs.indexOf(program) + 1].category !== program.category)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  opacity: (programs.indexOf(program) === programs.length - 1 || 
+                           (programs.indexOf(program) < programs.length - 1 && programs[programs.indexOf(program) + 1].category !== program.category)) ? 0.3 : 1,
+                }}
+                title="Move down"
+              >
+                ↓
+              </button>
+            </div>
+
             {/* Status dropdown */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -222,14 +364,41 @@ export default function ProgramsPage() {
                   borderRadius: '4px',
                   fontSize: '0.875rem',
                   cursor: 'pointer',
-                  backgroundColor: program.status === 'open_registration' ? '#dcfce7' : 
-                                   program.status === 'in_progress' ? '#dbeafe' : '#f3f4f6',
+                  backgroundColor: program.status === 'open_registration' ? '#f0fdf4' : 
+                                   program.status === 'in_progress' ? '#fef9c3' : 
+                                   program.status === 'archived' ? '#fafafa' : '#f3f4f6',
                 }}
               >
                 <option value="open_registration">Open Registration</option>
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
               </select>
+            </div>
+
+            {/* Edit button */}
+            <div style={{ 
+              padding: '0 0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+            }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openEditModal(program)
+                }}
+                style={{
+                  padding: '0.5rem',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+                title="Edit start date and notes"
+              >
+                ✏️
+              </button>
             </div>
 
             {/* Program details - clickable link */}
@@ -352,6 +521,16 @@ export default function ProgramsPage() {
             <input
               type="radio"
               name="statusFilter"
+              checked={statusFilter === 'archived'}
+              onChange={() => setStatusFilter('archived')}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            Archived
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+            <input
+              type="radio"
+              name="statusFilter"
               checked={statusFilter === 'all'}
               onChange={() => setStatusFilter('all')}
               style={{ marginRight: '0.5rem', cursor: 'pointer' }}
@@ -391,6 +570,110 @@ export default function ProgramsPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Modal */}
+      {editingProgram && (
+        <div
+          onClick={() => setEditingProgram(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '500px',
+              width: '90%',
+            }}
+          >
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              Edit: {editingProgram}
+            </h3>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '1rem',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Notes
+              </label>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '1rem',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                }}
+                placeholder="Add notes about this program..."
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setEditingProgram(null)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#0070f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
