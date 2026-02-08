@@ -148,6 +148,42 @@ export default function ProgramRosterPage() {
   }
 
   const restoreRegistration = async (id: number, playerName: string) => {
+    // Get the registration being restored
+    const reg = registrations.find(r => r.id === id)
+    if (!reg) return
+
+    // If this was transferred_out, we need to remove from the target program
+    if (reg.status === 'transferred_out') {
+      // Parse the target program from notes (format: "Transferred from X on date")
+      // We need to find the corresponding registration in the new program
+      
+      // Find all registrations for this player (same name, email, order_id)
+      const { data: relatedRegs, error: findError } = await supabase
+        .from('program_registrations')
+        .select('*')
+        .eq('player_name', reg.player_name)
+        .eq('source', 'transfer')
+        .eq('status', 'active')
+      
+      if (!findError && relatedRegs && relatedRegs.length > 0) {
+        // Find the one that was created after this one (the transferred-to registration)
+        const transferredReg = relatedRegs.find(r => 
+          r.order_id === reg.order_id && 
+          r.program_name !== reg.program_name &&
+          new Date(r.created_at) > new Date(reg.created_at)
+        )
+        
+        if (transferredReg) {
+          // Remove from target program
+          await supabase
+            .from('program_registrations')
+            .update({ status: 'removed' })
+            .eq('id', transferredReg.id)
+        }
+      }
+    }
+
+    // Restore this registration
     const { error } = await supabase
       .from('program_registrations')
       .update({ status: 'active' })
@@ -156,6 +192,7 @@ export default function ProgramRosterPage() {
     if (error) {
       alert('Error restoring player: ' + error.message)
     } else {
+      alert(`✓ ${playerName} restored!`)
       fetchRegistrations()
     }
   }
