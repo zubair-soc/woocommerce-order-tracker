@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+
 
 interface ProgramSummary {
   name: string
@@ -21,19 +22,24 @@ export default function ProgramsPage() {
   const [coloringProgram, setColoringProgram] = useState<string | null>(null)
   const [programColors, setProgramColors] = useState<{[key: string]: string}>({})
 
+  // Fetch colors once on mount
+  useEffect(() => {
+    const fetchColors = async () => {
+      const colorsResponse = await fetch('/api/program-colors')
+      const colorsData = await colorsResponse.json()
+      if (colorsData.colors) {
+        const colorMap: {[key: string]: string} = {}
+        colorsData.colors.forEach((c: any) => {
+          colorMap[c.program_name] = c.color
+        })
+        setProgramColors(colorMap)
+      }
+    }
+    fetchColors()
+  }, [])
+
   const fetchPrograms = async () => {
     setLoading(true)
-    
-    // Fetch program colors
-    const colorsResponse = await fetch('/api/program-colors')
-    const colorsData = await colorsResponse.json()
-    if (colorsData.colors) {
-      const colorMap: {[key: string]: string} = {}
-      colorsData.colors.forEach((c: any) => {
-        colorMap[c.program_name] = c.color
-      })
-      setProgramColors(colorMap)
-    }
     
     // Fetch products for status filtering
     const { data: productsData, error: productsError} = await supabase
@@ -94,7 +100,7 @@ export default function ProgramsPage() {
         })
       }
       
-      return product ? product.status === 'publish' : true // Default to true if no product found
+      return product ? product.status === 'publish' : false // Default to false if no product found (hide if not matched)
     }
 
     // Determine category for a program
@@ -187,6 +193,93 @@ export default function ProgramsPage() {
   useEffect(() => {
     fetchPrograms()
   }, [programFilter])
+
+  // Memoize program rendering to avoid recalculating categories on every render
+  const programElements = useMemo(() => {
+    let currentCategory = ''
+    return programs.map((program) => {
+      const showCategoryHeader = currentCategory !== program.category
+      currentCategory = program.category
+      
+      return (
+        <div key={program.name}>
+          {showCategoryHeader && (
+            <div style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #eee',
+              fontWeight: '600',
+              fontSize: '0.95rem',
+              color: '#666',
+            }}>
+              {program.category}
+            </div>
+          )}
+          <div style={{
+            display: 'flex',
+            borderBottom: '1px solid #eee',
+            transition: 'background-color 0.2s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
+          >
+            {/* Color dot - outside Link so click works */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                setColoringProgram(program.name)
+              }}
+              style={{
+                width: '60px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="Click to change color"
+            >
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: program.color || '#d1d5db',
+                  border: '2px solid #e5e7eb',
+                }}
+              />
+            </div>
+
+            {/* Program details - clickable link */}
+            <Link
+              href={`/programs/${encodeURIComponent(program.name)}`}
+              style={{
+                flex: 1,
+                display: 'block',
+                padding: '1.5rem',
+                paddingLeft: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.25rem' }}>
+                    {program.name}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                    {program.activeCount} active registrant{program.activeCount !== 1 ? 's' : ''}
+                    {program.count !== program.activeCount && ` (${program.count} total)`}
+                  </div>
+                </div>
+                <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
+              </div>
+            </Link>
+          </div>
+        </div>
+      )
+    })
+  }, [programs, programColors])
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -292,77 +385,7 @@ export default function ProgramsPage() {
           </div>
         ) : (
           <div>
-            {(() => {
-              let currentCategory = ''
-              return programs.map((program) => {
-                const showCategoryHeader = currentCategory !== program.category
-                currentCategory = program.category
-                
-                return (
-                  <div key={program.name}>
-                    {showCategoryHeader && (
-                      <div style={{
-                        padding: '0.75rem 1.5rem',
-                        backgroundColor: '#f9fafb',
-                        borderBottom: '1px solid #eee',
-                        fontWeight: '600',
-                        fontSize: '0.95rem',
-                        color: '#666',
-                      }}>
-                        {program.category}
-                      </div>
-                    )}
-                    <Link
-                      href={`/programs/${encodeURIComponent(program.name)}`}
-                      style={{
-                        display: 'block',
-                        padding: '1.5rem',
-                        borderBottom: '1px solid #eee',
-                        textDecoration: 'none',
-                        color: 'inherit',
-                        transition: 'background-color 0.2s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-                          {/* Color dot */}
-                          <div
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setColoringProgram(program.name)
-                            }}
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '50%',
-                              backgroundColor: program.color || '#d1d5db',
-                              cursor: 'pointer',
-                              border: '2px solid #e5e7eb',
-                              flexShrink: 0,
-                            }}
-                            title="Click to change color"
-                          />
-                          
-                          <div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.25rem' }}>
-                              {program.name}
-                            </div>
-                            <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                              {program.activeCount} active registrant{program.activeCount !== 1 ? 's' : ''}
-                              {program.count !== program.activeCount && ` (${program.count} total)`}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
-                      </div>
-                    </Link>
-                  </div>
-                )
-              })
-            })()}
+            {programElements}
           </div>
         )}
       </div>
