@@ -168,7 +168,14 @@ export default function ProgramsPage() {
       body: JSON.stringify({ program_name: programName, color })
     })
     
+    // Update colors state
     setProgramColors(prev => ({ ...prev, [programName]: color }))
+    
+    // Update programs array with new color to trigger re-render
+    setPrograms(prev => prev.map(p => 
+      p.name === programName ? { ...p, color } : p
+    ))
+    
     setColoringProgram(null)
   }
 
