@@ -9,7 +9,6 @@ interface ProgramSummary {
   name: string
   count: number
   activeCount: number
-  color?: string
   category: string
   status: string
 }
@@ -19,24 +18,11 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'all'>('open_registration')
-  const [coloringProgram, setColoringProgram] = useState<string | null>(null)
-  const [programColors, setProgramColors] = useState<{[key: string]: string}>({})
   const [programStatuses, setProgramStatuses] = useState<{[key: string]: string}>({})
 
-  // Fetch colors and statuses once on mount
+  // Fetch statuses once on mount
   useEffect(() => {
-    const fetchColorsAndStatuses = async () => {
-      // Fetch colors
-      const colorsResponse = await fetch('/api/program-colors')
-      const colorsData = await colorsResponse.json()
-      if (colorsData.colors) {
-        const colorMap: {[key: string]: string} = {}
-        colorsData.colors.forEach((c: any) => {
-          colorMap[c.program_name] = c.color
-        })
-        setProgramColors(colorMap)
-      }
-
+    const fetchStatuses = async () => {
       // Fetch statuses
       const statusResponse = await fetch('/api/program-settings')
       const statusData = await statusResponse.json()
@@ -48,7 +34,7 @@ export default function ProgramsPage() {
         setProgramStatuses(statusMap)
       }
     }
-    fetchColorsAndStatuses()
+    fetchStatuses()
   }, [])
 
   const fetchPrograms = async () => {
@@ -104,7 +90,6 @@ export default function ProgramsPage() {
       name,
       count: counts.total,
       activeCount: counts.active,
-      color: programColors[name],
       category: getCategory(name),
       status: programStatuses[name] || 'open_registration', // Default to open_registration
     }))
@@ -132,23 +117,6 @@ export default function ProgramsPage() {
     setLoading(false)
   }
 
-  const saveColor = async (programName: string, color: string) => {
-    await fetch('/api/program-colors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ program_name: programName, color })
-    })
-    
-    // Update colors state
-    setProgramColors(prev => ({ ...prev, [programName]: color }))
-    
-    // Update programs array with new color to trigger re-render
-    setPrograms(prev => prev.map(p => 
-      p.name === programName ? { ...p, color } : p
-    ))
-    
-    setColoringProgram(null)
-  }
 
   const syncRegistrations = async () => {
     setSyncing(true)
@@ -178,10 +146,19 @@ export default function ProgramsPage() {
     // Update statuses state
     setProgramStatuses(prev => ({ ...prev, [programName]: status }))
     
-    // Update programs array with new status to trigger re-render
-    setPrograms(prev => prev.map(p => 
-      p.name === programName ? { ...p, status } : p
-    ))
+    // Update programs array with new status
+    setPrograms(prev => {
+      const updated = prev.map(p => 
+        p.name === programName ? { ...p, status } : p
+      )
+      
+      // Apply current filter immediately
+      if (statusFilter === 'all') {
+        return updated
+      } else {
+        return updated.filter(p => p.status === statusFilter)
+      }
+    })
   }
 
   useEffect(() => {
@@ -217,33 +194,6 @@ export default function ProgramsPage() {
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
           >
-            {/* Color dot - outside Link so click works */}
-            <div
-              onClick={(e) => {
-                e.stopPropagation()
-                setColoringProgram(program.name)
-              }}
-              style={{
-                width: '60px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              title="Click to change color"
-            >
-              <div
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  backgroundColor: program.color || '#d1d5db',
-                  border: '2px solid #e5e7eb',
-                }}
-              />
-            </div>
-
             {/* Status dropdown */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -307,7 +257,7 @@ export default function ProgramsPage() {
         </div>
       )
     })
-  }, [programs, programColors])
+  }, [programs])
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -437,91 +387,6 @@ export default function ProgramsPage() {
           </div>
         )}
       </div>
-
-      {/* Color Picker Modal */}
-      {coloringProgram && (
-        <div
-          onClick={() => setColoringProgram(null)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '8px',
-              maxWidth: '400px',
-            }}
-          >
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '600' }}>
-              Choose Color for {coloringProgram}
-            </h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              {[
-                '#ef4444', // red
-                '#f97316', // orange  
-                '#f59e0b', // amber
-                '#84cc16', // lime
-                '#10b981', // emerald
-                '#14b8a6', // teal
-                '#06b6d4', // cyan
-                '#0ea5e9', // sky
-                '#3b82f6', // blue
-                '#6366f1', // indigo
-                '#8b5cf6', // violet
-                '#a855f7', // purple
-                '#ec4899', // pink
-                '#f43f5e', // rose
-                '#64748b', // slate
-                '#d1d5db', // gray (default)
-              ].map((color) => (
-                <div
-                  key={color}
-                  onClick={() => saveColor(coloringProgram, color)}
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '8px',
-                    backgroundColor: color,
-                    cursor: 'pointer',
-                    border: '2px solid #e5e7eb',
-                    transition: 'transform 0.1s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                />
-              ))}
-            </div>
-
-            <button
-              onClick={() => setColoringProgram(null)}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                width: '100%',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
