@@ -20,11 +20,27 @@ export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'archived' | 'all'>('open_registration')
+  const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'archived' | 'all'>(() => {
+    // Restore filter from sessionStorage on mount (handles back button)
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('programStatusFilter')
+      if (saved && ['open_registration', 'in_progress', 'completed', 'archived', 'all'].includes(saved)) {
+        return saved as any
+      }
+    }
+    return 'open_registration'
+  })
   const [programStatuses, setProgramStatuses] = useState<{[key: string]: string}>({})
   const [editingProgram, setEditingProgram] = useState<string | null>(null)
   const [editStartDate, setEditStartDate] = useState('')
   const [editNotes, setEditNotes] = useState('')
+
+  // Save filter to sessionStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('programStatusFilter', statusFilter)
+    }
+  }, [statusFilter])
 
   const fetchPrograms = async () => {
     setLoading(true)
@@ -193,28 +209,41 @@ export default function ProgramsPage() {
     // Check if both programs are in same category
     if (programs[currentIndex].category !== programs[targetIndex].category) return
     
-    // Swap display orders
-    const currentOrder = programs[currentIndex].display_order
-    const targetOrder = programs[targetIndex].display_order
+    // Get all programs in the same category
+    const category = programs[currentIndex].category
+    const categoryPrograms = programs.filter(p => p.category === category)
     
-    // Update both programs in database
-    await fetch('/api/program-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        program_name: programName, 
-        display_order: targetOrder 
-      })
+    // Find positions within category
+    const currentCategoryIndex = categoryPrograms.findIndex(p => p.name === programName)
+    const targetCategoryIndex = direction === 'up' ? currentCategoryIndex - 1 : currentCategoryIndex + 1
+    
+    if (targetCategoryIndex < 0 || targetCategoryIndex >= categoryPrograms.length) return
+    
+    // Assign new sequential display orders to entire category
+    const updates = categoryPrograms.map((prog, idx) => {
+      let newOrder = idx * 10 // Space them out (0, 10, 20, 30...)
+      
+      // Swap positions
+      if (idx === currentCategoryIndex) {
+        newOrder = targetCategoryIndex * 10
+      } else if (idx === targetCategoryIndex) {
+        newOrder = currentCategoryIndex * 10
+      }
+      
+      return {
+        program_name: prog.name,
+        display_order: newOrder
+      }
     })
     
-    await fetch('/api/program-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        program_name: programs[targetIndex].name, 
-        display_order: currentOrder 
+    // Update all programs in category
+    for (const update of updates) {
+      await fetch('/api/program-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update)
       })
-    })
+    }
     
     // Re-fetch to get updated order
     fetchPrograms()
@@ -339,6 +368,23 @@ export default function ProgramsPage() {
                 ↓
               </button>
             </div>
+
+            {/* Start date display */}
+            {program.start_date && (
+              <div style={{
+                padding: '0 0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '0.875rem',
+                color: '#666',
+              }}>
+                📅 {new Date(program.start_date).toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric',
+                  year: 'numeric'
+                })}
+              </div>
+            )}
 
             {/* Status dropdown */}
             <div
