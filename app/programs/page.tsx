@@ -134,7 +134,7 @@ export default function ProgramsPage() {
       programList = programList.filter(program => program.status === statusFilter)
     }
 
-    // Sort by category first, then display_order, then alphabetically
+    // Sort by category first, then start date, then alphabetically
     programList.sort((a, b) => {
       if (a.category !== b.category) {
         // Sort categories: Beginner Hockey, Skills Development
@@ -144,10 +144,16 @@ export default function ProgramsPage() {
         }
         return (categoryOrder[a.category] || 999) - (categoryOrder[b.category] || 999)
       }
-      // Within same category, sort by display_order first, then alphabetically
-      if (a.display_order !== b.display_order) {
-        return a.display_order - b.display_order
+      
+      // Within same category, sort by start_date first (earliest first)
+      if (a.start_date && b.start_date) {
+        return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
       }
+      // Programs with dates come before programs without dates
+      if (a.start_date && !b.start_date) return -1
+      if (!a.start_date && b.start_date) return 1
+      
+      // If no dates, sort alphabetically
       return a.name.localeCompare(b.name)
     })
     
@@ -199,55 +205,6 @@ export default function ProgramsPage() {
     })
   }
 
-  const moveProgram = async (programName: string, direction: 'up' | 'down') => {
-    const currentIndex = programs.findIndex(p => p.name === programName)
-    if (currentIndex === -1) return
-    
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-    if (targetIndex < 0 || targetIndex >= programs.length) return
-    
-    // Check if both programs are in same category
-    if (programs[currentIndex].category !== programs[targetIndex].category) return
-    
-    // Get all programs in the same category
-    const category = programs[currentIndex].category
-    const categoryPrograms = programs.filter(p => p.category === category)
-    
-    // Find positions within category
-    const currentCategoryIndex = categoryPrograms.findIndex(p => p.name === programName)
-    const targetCategoryIndex = direction === 'up' ? currentCategoryIndex - 1 : currentCategoryIndex + 1
-    
-    if (targetCategoryIndex < 0 || targetCategoryIndex >= categoryPrograms.length) return
-    
-    // Assign new sequential display orders to entire category
-    const updates = categoryPrograms.map((prog, idx) => {
-      let newOrder = idx * 10 // Space them out (0, 10, 20, 30...)
-      
-      // Swap positions
-      if (idx === currentCategoryIndex) {
-        newOrder = targetCategoryIndex * 10
-      } else if (idx === targetCategoryIndex) {
-        newOrder = currentCategoryIndex * 10
-      }
-      
-      return {
-        program_name: prog.name,
-        display_order: newOrder
-      }
-    })
-    
-    // Update all programs in category
-    for (const update of updates) {
-      await fetch('/api/program-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(update)
-      })
-    }
-    
-    // Re-fetch to get updated order
-    fetchPrograms()
-  }
 
   const openEditModal = (program: ProgramSummary) => {
     setEditingProgram(program.name)
@@ -318,57 +275,6 @@ export default function ProgramsPage() {
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
           >
-            {/* Up/Down arrows */}
-            <div style={{
-              display: 'flex',
-              gap: '0.25rem',
-              padding: '0 0.75rem',
-              alignItems: 'center',
-            }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  moveProgram(program.name, 'up')
-                }}
-                disabled={programs.indexOf(program) === 0 || 
-                         (programs.indexOf(program) > 0 && programs[programs.indexOf(program) - 1].category !== program.category)}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  opacity: (programs.indexOf(program) === 0 || 
-                           (programs.indexOf(program) > 0 && programs[programs.indexOf(program) - 1].category !== program.category)) ? 0.3 : 1,
-                }}
-                title="Move up"
-              >
-                ↑
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  moveProgram(program.name, 'down')
-                }}
-                disabled={programs.indexOf(program) === programs.length - 1 || 
-                         (programs.indexOf(program) < programs.length - 1 && programs[programs.indexOf(program) + 1].category !== program.category)}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  opacity: (programs.indexOf(program) === programs.length - 1 || 
-                           (programs.indexOf(program) < programs.length - 1 && programs[programs.indexOf(program) + 1].category !== program.category)) ? 0.3 : 1,
-                }}
-                title="Move down"
-              >
-                ↓
-              </button>
-            </div>
-
             {/* Status dropdown */}
             <div
               onClick={(e) => e.stopPropagation()}
