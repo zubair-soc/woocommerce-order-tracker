@@ -8,6 +8,8 @@ interface ProgramSummary {
   name: string
   count: number
   activeCount: number
+  color?: string
+  category: string
 }
 
 export default function ProgramsPage() {
@@ -16,12 +18,25 @@ export default function ProgramsPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
+  const [coloringProgram, setColoringProgram] = useState<string | null>(null)
+  const [programColors, setProgramColors] = useState<{[key: string]: string}>({})
 
   const fetchPrograms = async () => {
     setLoading(true)
     
+    // Fetch program colors
+    const colorsResponse = await fetch('/api/program-colors')
+    const colorsData = await colorsResponse.json()
+    if (colorsData.colors) {
+      const colorMap: {[key: string]: string} = {}
+      colorsData.colors.forEach((c: any) => {
+        colorMap[c.program_name] = c.color
+      })
+      setProgramColors(colorMap)
+    }
+    
     // Fetch products for status filtering
-    const { data: productsData, error: productsError } = await supabase
+    const { data: productsData, error: productsError} = await supabase
       .from('products')
       .select('*')
 
@@ -51,16 +66,58 @@ export default function ProgramsPage() {
         .trim()
     }
 
+    // Check if program is merchandise
+    const isMerchandise = (programName: string): boolean => {
+      const programLower = programName.toLowerCase()
+      return !(
+        programLower.includes('beginner hockey') ||
+        programLower.includes('pre-beginner') ||
+        programLower.includes('powerskating') ||
+        programLower.includes('power skating') ||
+        programLower.includes('shooting & puck handling') ||
+        programLower.includes('shooting and puck handling') ||
+        programLower.includes('goalie camp')
+      )
+    }
+
     // Check if program is active (product is published)
     const isProgramActive = (programName: string): boolean => {
-      const product = productsData?.find(p => normalizeProductName(p.name) === programName)
-      return product ? product.status === 'publish' : false
+      // Try exact match first
+      let product = productsData?.find(p => normalizeProductName(p.name) === programName)
+      
+      // If no exact match, try fuzzy match (program name contains product name or vice versa)
+      if (!product) {
+        const normalizedProgram = normalizeProductName(programName).toLowerCase()
+        product = productsData?.find(p => {
+          const normalizedProduct = normalizeProductName(p.name).toLowerCase()
+          return normalizedProgram.includes(normalizedProduct) || normalizedProduct.includes(normalizedProgram)
+        })
+      }
+      
+      return product ? product.status === 'publish' : true // Default to true if no product found
+    }
+
+    // Determine category for a program
+    const getCategory = (programName: string): string => {
+      const nameLower = programName.toLowerCase()
+      if (nameLower.includes('beginner hockey') || nameLower.includes('pre-beginner')) {
+        return 'Beginner Hockey'
+      }
+      if (nameLower.includes('powerskating') || nameLower.includes('power skating') ||
+          nameLower.includes('shooting') || nameLower.includes('puck handling') || 
+          nameLower.includes('goalie camp')) {
+        return 'Skills Development'
+      }
+      return 'Other'
     }
 
     // Group by program and count
     const programMap = new Map<string, { total: number, active: number }>()
     
     registrations?.forEach(reg => {
+      // Skip merchandise
+      if (isMerchandise(reg.program_name)) return
+      
       const current = programMap.get(reg.program_name) || { total: 0, active: 0 }
       current.total++
       if (reg.status === 'active') current.active++
@@ -71,6 +128,8 @@ export default function ProgramsPage() {
       name,
       count: counts.total,
       activeCount: counts.active,
+      color: programColors[name],
+      category: getCategory(name),
     }))
 
     // Filter by active/all based on program filter
@@ -78,9 +137,33 @@ export default function ProgramsPage() {
       programList = programList.filter(program => isProgramActive(program.name))
     }
 
-    programList.sort((a, b) => a.name.localeCompare(b.name))
+    // Sort by category first, then alphabetically within category
+    programList.sort((a, b) => {
+      if (a.category !== b.category) {
+        // Sort categories: Beginner Hockey, Skills Development, Other
+        const categoryOrder: {[key: string]: number} = {
+          'Beginner Hockey': 1,
+          'Skills Development': 2,
+          'Other': 3
+        }
+        return (categoryOrder[a.category] || 999) - (categoryOrder[b.category] || 999)
+      }
+      return a.name.localeCompare(b.name)
+    })
+    
     setPrograms(programList)
     setLoading(false)
+  }
+
+  const saveColor = async (programName: string, color: string) => {
+    await fetch('/api/program-colors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ program_name: programName, color })
+    })
+    
+    setProgramColors(prev => ({ ...prev, [programName]: color }))
+    setColoringProgram(null)
   }
 
   const syncRegistrations = async () => {
@@ -209,38 +292,165 @@ export default function ProgramsPage() {
           </div>
         ) : (
           <div>
-            {programs.map((program) => (
-              <Link
-                key={program.name}
-                href={`/programs/${encodeURIComponent(program.name)}`}
-                style={{
-                  display: 'block',
-                  padding: '1.5rem',
-                  borderBottom: '1px solid #eee',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.25rem' }}>
-                      {program.name}
-                    </div>
-                    <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                      {program.activeCount} active registrant{program.activeCount !== 1 ? 's' : ''}
-                      {program.count !== program.activeCount && ` (${program.count} total)`}
-                    </div>
+            {(() => {
+              let currentCategory = ''
+              return programs.map((program) => {
+                const showCategoryHeader = currentCategory !== program.category
+                currentCategory = program.category
+                
+                return (
+                  <div key={program.name}>
+                    {showCategoryHeader && (
+                      <div style={{
+                        padding: '0.75rem 1.5rem',
+                        backgroundColor: '#f9fafb',
+                        borderBottom: '1px solid #eee',
+                        fontWeight: '600',
+                        fontSize: '0.95rem',
+                        color: '#666',
+                      }}>
+                        {program.category}
+                      </div>
+                    )}
+                    <Link
+                      href={`/programs/${encodeURIComponent(program.name)}`}
+                      style={{
+                        display: 'block',
+                        padding: '1.5rem',
+                        borderBottom: '1px solid #eee',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
+                          {/* Color dot */}
+                          <div
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setColoringProgram(program.name)
+                            }}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '50%',
+                              backgroundColor: program.color || '#d1d5db',
+                              cursor: 'pointer',
+                              border: '2px solid #e5e7eb',
+                              flexShrink: 0,
+                            }}
+                            title="Click to change color"
+                          />
+                          
+                          <div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.25rem' }}>
+                              {program.name}
+                            </div>
+                            <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                              {program.activeCount} active registrant{program.activeCount !== 1 ? 's' : ''}
+                              {program.count !== program.activeCount && ` (${program.count} total)`}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
+                      </div>
+                    </Link>
                   </div>
-                  <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
-                </div>
-              </Link>
-            ))}
+                )
+              })
+            })()}
           </div>
         )}
       </div>
+
+      {/* Color Picker Modal */}
+      {coloringProgram && (
+        <div
+          onClick={() => setColoringProgram(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '400px',
+            }}
+          >
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '600' }}>
+              Choose Color for {coloringProgram}
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              {[
+                '#ef4444', // red
+                '#f97316', // orange  
+                '#f59e0b', // amber
+                '#84cc16', // lime
+                '#10b981', // emerald
+                '#14b8a6', // teal
+                '#06b6d4', // cyan
+                '#0ea5e9', // sky
+                '#3b82f6', // blue
+                '#6366f1', // indigo
+                '#8b5cf6', // violet
+                '#a855f7', // purple
+                '#ec4899', // pink
+                '#f43f5e', // rose
+                '#64748b', // slate
+                '#d1d5db', // gray (default)
+              ].map((color) => (
+                <div
+                  key={color}
+                  onClick={() => saveColor(coloringProgram, color)}
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '8px',
+                    backgroundColor: color,
+                    cursor: 'pointer',
+                    border: '2px solid #e5e7eb',
+                    transition: 'transform 0.1s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                />
+              ))}
+            </div>
+
+            <button
+              onClick={() => setColoringProgram(null)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                width: '100%',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

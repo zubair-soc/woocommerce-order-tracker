@@ -16,6 +16,7 @@ export default function Home() {
   const [selectedCourses, setSelectedCourses] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [datePreset, setDatePreset] = useState('')
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
   
   // UI state
@@ -73,6 +74,57 @@ export default function Home() {
       alert('Error syncing orders: ' + error)
     }
     setSyncing(false)
+  }
+
+  // Handle date preset selection
+  const handleDatePreset = (preset: string) => {
+    setDatePreset(preset)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    
+    switch(preset) {
+      case 'today':
+        setDateFrom(today.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'yesterday':
+        setDateFrom(yesterday.toISOString().split('T')[0])
+        setDateTo(yesterday.toISOString().split('T')[0])
+        break
+      case 'last7':
+        const week = new Date(today)
+        week.setDate(week.getDate() - 7)
+        setDateFrom(week.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'last14':
+        const twoWeeks = new Date(today)
+        twoWeeks.setDate(twoWeeks.getDate() - 14)
+        setDateFrom(twoWeeks.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'last30':
+        const month = new Date(today)
+        month.setDate(month.getDate() - 30)
+        setDateFrom(month.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'thisMonth':
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        setDateFrom(monthStart.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'lastMonth':
+        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+        setDateFrom(lastMonthStart.toISOString().split('T')[0])
+        setDateTo(lastMonthEnd.toISOString().split('T')[0])
+        break
+      case 'custom':
+        // User will set dates manually
+        break
+    }
   }
 
   // Apply filters
@@ -404,38 +456,164 @@ export default function Home() {
             </select>
           </div>
 
-          <div>
+          {/* Date Presets */}
+          <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              From Date
+              Date Range
             </label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-              }}
-            />
-          </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              <button
+                onClick={() => handleDatePreset('today')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'today' ? '#0070f3' : 'white',
+                  color: datePreset === 'today' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => handleDatePreset('yesterday')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'yesterday' ? '#0070f3' : 'white',
+                  color: datePreset === 'yesterday' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Yesterday
+              </button>
+              <button
+                onClick={() => handleDatePreset('last7')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'last7' ? '#0070f3' : 'white',
+                  color: datePreset === 'last7' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Last 7 Days
+              </button>
+              <button
+                onClick={() => handleDatePreset('last14')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'last14' ? '#0070f3' : 'white',
+                  color: datePreset === 'last14' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Last 14 Days
+              </button>
+              <button
+                onClick={() => handleDatePreset('last30')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'last30' ? '#0070f3' : 'white',
+                  color: datePreset === 'last30' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Last 30 Days
+              </button>
+              <button
+                onClick={() => handleDatePreset('thisMonth')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'thisMonth' ? '#0070f3' : 'white',
+                  color: datePreset === 'thisMonth' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => handleDatePreset('lastMonth')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'lastMonth' ? '#0070f3' : 'white',
+                  color: datePreset === 'lastMonth' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Last Month
+              </button>
+              <button
+                onClick={() => { handleDatePreset('custom'); }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: datePreset === 'custom' ? '#0070f3' : 'white',
+                  color: datePreset === 'custom' ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Custom
+              </button>
+            </div>
 
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              To Date
-            </label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-              }}
-            />
+            {/* Show custom date inputs only when Custom is selected */}
+            {datePreset === 'custom' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

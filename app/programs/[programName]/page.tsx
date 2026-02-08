@@ -383,10 +383,17 @@ export default function ProgramRosterPage() {
   const activeCount = registrations.filter(r => r.status === 'active').length
   const removedCount = registrations.filter(r => r.status === 'removed' || r.status === 'transferred_out').length
   
-  // Filter registrations based on showRemoved toggle
-  const displayedRegistrations = showRemoved 
+  // Filter registrations based on showRemoved toggle, then sort by order #
+  const displayedRegistrations = (showRemoved 
     ? registrations 
     : registrations.filter(r => r.status === 'active')
+  ).sort((a, b) => {
+    // Sort by order_id (nulls last)
+    if (a.order_id === null && b.order_id === null) return 0
+    if (a.order_id === null) return 1
+    if (b.order_id === null) return -1
+    return a.order_id - b.order_id
+  })
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -674,7 +681,9 @@ export default function ProgramRosterPage() {
                     <td style={tableCellStyle}>{reg.player_email || '-'}</td>
                     <td style={tableCellStyle}>{reg.player_phone || '-'}</td>
                     <td style={tableCellStyle}>
-                      {reg.source === 'order' ? (
+                      {reg.source === 'transfer' && reg.order_id ? (
+                        <span>Transfer (Order #{reg.order_id})</span>
+                      ) : reg.source === 'order' ? (
                         <span>Order #{reg.order_id}</span>
                       ) : (
                         <span style={{ textTransform: 'capitalize' }}>{reg.payment_method}</span>
