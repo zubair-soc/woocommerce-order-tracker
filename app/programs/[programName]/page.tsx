@@ -25,8 +25,10 @@ export default function ProgramRosterPage() {
   const programName = decodeURIComponent(params.programName as string)
   
   const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [allPrograms, setAllPrograms] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showRemoved, setShowRemoved] = useState(false)
   
   // Form state
   const [playerName, setPlayerName] = useState('')
@@ -38,6 +40,19 @@ export default function ProgramRosterPage() {
 
   const fetchRegistrations = async () => {
     setLoading(true)
+    
+    // Fetch all unique program names for move dropdown
+    const { data: allRegs, error: allRegsError } = await supabase
+      .from('program_registrations')
+      .select('program_name')
+
+    if (!allRegsError) {
+      const uniquePrograms = Array.from(new Set(allRegs?.map(r => r.program_name) || []))
+        .filter(p => p !== programName) // Exclude current program
+        .sort()
+      setAllPrograms(uniquePrograms)
+    }
+    
     const { data, error } = await supabase
       .from('program_registrations')
       .select('*')
@@ -84,17 +99,85 @@ export default function ProgramRosterPage() {
     }
   }
 
-  const deleteRegistration = async (id: number, playerName: string) => {
-    if (!confirm(`Remove ${playerName} from this program?`)) return
+  const removeRegistration = async (id: number, playerName: string) => {
+    if (!confirm(`Remove ${playerName} from this program? (Can be restored later)`)) return
 
     const { error } = await supabase
       .from('program_registrations')
-      .delete()
+      .update({ status: 'removed' })
       .eq('id', id)
 
     if (error) {
       alert('Error removing player: ' + error.message)
     } else {
+      fetchRegistrations()
+    }
+  }
+
+  const restoreRegistration = async (id: number, playerName: string) => {
+    const { error } = await supabase
+      .from('program_registrations')
+      .update({ status: 'active' })
+      .eq('id', id)
+
+    if (error) {
+      alert('Error restoring player: ' + error.message)
+    } else {
+      fetchRegistrations()
+    }
+  }
+
+  const moveRegistration = async (id: number, playerName: string, currentProgram: string) => {
+    if (allPrograms.length === 0) {
+      alert('No other programs available')
+      return
+    }
+
+    const targetProgram = prompt(`Move ${playerName} to which program?\n\nAvailable programs:\n${allPrograms.join('\n')}\n\nEnter program name exactly:`)
+    
+    if (!targetProgram) return
+    
+    if (!allPrograms.includes(targetProgram)) {
+      alert('Invalid program name. Please enter exactly as shown.')
+      return
+    }
+
+    if (!confirm(`Move ${playerName} from "${currentProgram}" to "${targetProgram}"?`)) return
+
+    // Get the registration details
+    const reg = registrations.find(r => r.id === id)
+    if (!reg) return
+
+    const { error: insertError } = await supabase
+      .from('program_registrations')
+      .insert({
+        program_name: targetProgram,
+        player_name: reg.player_name,
+        player_email: reg.player_email,
+        player_phone: reg.player_phone,
+        order_id: reg.order_id,
+        source: 'transfer',
+        payment_method: reg.payment_method,
+        amount: reg.amount,
+        status: 'active',
+        notes: `Transferred from "${currentProgram}" on ${new Date().toLocaleDateString()}`,
+      })
+
+    if (insertError) {
+      alert('Error moving player: ' + insertError.message)
+      return
+    }
+
+    // Mark old registration as transferred_out
+    const { error: updateError } = await supabase
+      .from('program_registrations')
+      .update({ status: 'transferred_out' })
+      .eq('id', id)
+
+    if (updateError) {
+      alert('Error updating old registration: ' + updateError.message)
+    } else {
+      alert(`✓ ${playerName} moved to ${targetProgram}`)
       fetchRegistrations()
     }
   }
@@ -137,6 +220,12 @@ export default function ProgramRosterPage() {
   }, [programName])
 
   const activeCount = registrations.filter(r => r.status === 'active').length
+  const removedCount = registrations.filter(r => r.status === 'removed' || r.status === 'transferred_out').length
+  
+  // Filter registrations based on showRemoved toggle
+  const displayedRegistrations = showRemoved 
+    ? registrations 
+    : registrations.filter(r => r.status === 'active')
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -214,6 +303,24 @@ export default function ProgramRosterPage() {
         >
           Export Roster
         </button>
+
+        {removedCount > 0 && (
+          <button
+            onClick={() => setShowRemoved(!showRemoved)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: showRemoved ? '#ef4444' : '#f59e0b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '1rem',
+              cursor: 'pointer',
+              fontWeight: '500',
+            }}
+          >
+            {showRemoved ? `Hide Removed (${removedCount})` : `Show Removed (${removedCount})`}
+          </button>
+        )}
       </div>
 
       {/* Add Player Form */}
@@ -395,8 +502,12 @@ export default function ProgramRosterPage() {
                 </tr>
               </thead>
               <tbody>
-                {registrations.map((reg, index) => (
-                  <tr key={reg.id} style={{ borderBottom: '1px solid #eee' }}>
+                {displayedRegistrations.map((reg, index) => (
+                  <tr key={reg.id} style={{ 
+                    borderBottom: '1px solid #eee',
+                    opacity: reg.status === 'active' ? 1 : 0.6,
+                    backgroundColor: reg.status === 'active' ? 'white' : '#f9fafb'
+                  }}>
                     <td style={tableCellStyle}>{index + 1}</td>
                     <td style={tableCellStyle}>{reg.player_name}</td>
                     <td style={tableCellStyle}>{reg.player_email || '-'}</td>
@@ -432,20 +543,56 @@ export default function ProgramRosterPage() {
                       </span>
                     </td>
                     <td style={tableCellStyle}>
-                      <button
-                        onClick={() => deleteRegistration(reg.id, reg.player_name)}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          backgroundColor: '#dc2626',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Remove
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {reg.status === 'active' && (
+                          <>
+                            <button
+                              onClick={() => moveRegistration(reg.id, reg.player_name, programName)}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#0070f3',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Move
+                            </button>
+                            <button
+                              onClick={() => removeRegistration(reg.id, reg.player_name)}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                        {(reg.status === 'removed' || reg.status === 'transferred_out') && (
+                          <button
+                            onClick={() => restoreRegistration(reg.id, reg.player_name)}
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              backgroundColor: '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.875rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Restore
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

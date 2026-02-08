@@ -12,11 +12,24 @@ interface ProgramSummary {
 
 export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramSummary[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
 
   const fetchPrograms = async () => {
     setLoading(true)
+    
+    // Fetch products for status filtering
+    const { data: productsData, error: productsError } = await supabase
+      .from('products')
+      .select('*')
+
+    if (productsError) {
+      console.error('Error fetching products:', productsError)
+    } else {
+      setProducts(productsData || [])
+    }
     
     const { data: registrations, error } = await supabase
       .from('program_registrations')
@@ -26,6 +39,22 @@ export default function ProgramsPage() {
       console.error('Error fetching registrations:', error)
       setLoading(false)
       return
+    }
+
+    // Normalize product name helper
+    const normalizeProductName = (name: string): string => {
+      return name
+        .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
+        .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
+        .replace(/\s*-?\s*FULL\s*$/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
+    // Check if program is active (product is published)
+    const isProgramActive = (programName: string): boolean => {
+      const product = productsData?.find(p => normalizeProductName(p.name) === programName)
+      return product ? product.status === 'publish' : false
     }
 
     // Group by program and count
@@ -38,11 +67,16 @@ export default function ProgramsPage() {
       programMap.set(reg.program_name, current)
     })
 
-    const programList: ProgramSummary[] = Array.from(programMap.entries()).map(([name, counts]) => ({
+    let programList: ProgramSummary[] = Array.from(programMap.entries()).map(([name, counts]) => ({
       name,
       count: counts.total,
       activeCount: counts.active,
     }))
+
+    // Filter by active/all based on program filter
+    if (programFilter === 'active') {
+      programList = programList.filter(program => isProgramActive(program.name))
+    }
 
     programList.sort((a, b) => a.name.localeCompare(b.name))
     setPrograms(programList)
@@ -69,7 +103,7 @@ export default function ProgramsPage() {
 
   useEffect(() => {
     fetchPrograms()
-  }, [])
+  }, [programFilter])
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -115,6 +149,38 @@ export default function ProgramsPage() {
         >
           ← Back to Orders
         </Link>
+      </div>
+
+      {/* Active/All Programs Filter */}
+      <div style={{ 
+        marginBottom: '2rem',
+        padding: '0.75rem',
+        backgroundColor: '#f0f9ff',
+        borderRadius: '6px',
+        border: '1px solid #bfdbfe'
+      }}>
+        <div style={{ display: 'flex', gap: '1.5rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+            <input
+              type="radio"
+              name="programFilter"
+              checked={programFilter === 'active'}
+              onChange={() => setProgramFilter('active')}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            Active Programs Only
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+            <input
+              type="radio"
+              name="programFilter"
+              checked={programFilter === 'all'}
+              onChange={() => setProgramFilter('all')}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            All Programs (including completed)
+          </label>
+        </div>
       </div>
 
       {/* Programs List */}
