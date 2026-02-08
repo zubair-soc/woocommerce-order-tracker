@@ -51,7 +51,27 @@ export default function Home() {
     if (productsError) {
       console.error('Error fetching products:', productsError)
     } else {
-      setProducts(productsData || [])
+      // Fetch program statuses to filter out completed programs
+      const statusResponse = await fetch('/api/program-settings')
+      const statusData = await statusResponse.json()
+      
+      let filteredProducts = productsData || []
+      
+      if (statusData.settings) {
+        // Create a map of program statuses
+        const statusMap: {[key: string]: string} = {}
+        statusData.settings.forEach((s: any) => {
+          statusMap[s.program_name] = s.status
+        })
+        
+        // Only show products that are "open_registration" or don't have a status set
+        filteredProducts = filteredProducts.filter((product: any) => {
+          const status = statusMap[product.name]
+          return !status || status === 'open_registration'
+        })
+      }
+      
+      setProducts(filteredProducts)
     }
     
     setLoading(false)
@@ -462,6 +482,25 @@ export default function Home() {
               Date Range
             </label>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              <button
+                onClick={() => {
+                  setDatePreset('')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: !datePreset ? '#0070f3' : 'white',
+                  color: !datePreset ? 'white' : '#333',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: !datePreset ? '600' : '400',
+                }}
+              >
+                All
+              </button>
               <button
                 onClick={() => handleDatePreset('today')}
                 style={{
