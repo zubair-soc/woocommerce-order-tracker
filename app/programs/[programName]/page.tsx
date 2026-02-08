@@ -29,6 +29,8 @@ export default function ProgramRosterPage() {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [showRemoved, setShowRemoved] = useState(false)
+  const [editingPlayer, setEditingPlayer] = useState<Registration | null>(null)
+  const [movingPlayer, setMovingPlayer] = useState<Registration | null>(null)
   
   // Form state
   const [playerName, setPlayerName] = useState('')
@@ -37,9 +39,29 @@ export default function ProgramRosterPage() {
   const [paymentMethod, setPaymentMethod] = useState('e-transfer')
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
+  
+  // Edit form state
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+
 
   const fetchRegistrations = async () => {
     setLoading(true)
+    
+    // Helper to check if program is merchandise
+    const isMerchandise = (programName: string): boolean => {
+      const programLower = programName.toLowerCase()
+      return !(
+        programLower.includes('beginner hockey') ||
+        programLower.includes('pre-beginner') ||
+        programLower.includes('powerskating') ||
+        programLower.includes('power skating') ||
+        programLower.includes('shooting & puck handling') ||
+        programLower.includes('shooting and puck handling') ||
+        programLower.includes('goalie camp')
+      )
+    }
     
     // Fetch all unique program names for move dropdown
     const { data: allRegs, error: allRegsError } = await supabase
@@ -48,7 +70,7 @@ export default function ProgramRosterPage() {
 
     if (!allRegsError) {
       const uniquePrograms = Array.from(new Set(allRegs?.map(r => r.program_name) || []))
-        .filter(p => p !== programName) // Exclude current program
+        .filter(p => p !== programName && !isMerchandise(p)) // Exclude current program and merchandise
         .sort()
       setAllPrograms(uniquePrograms)
     }
@@ -127,22 +149,108 @@ export default function ProgramRosterPage() {
     }
   }
 
+  const startEdit = (reg: Registration) => {
+    setEditingPlayer(reg)
+    setEditName(reg.player_name)
+    setEditEmail(reg.player_email || '')
+    setEditPhone(reg.player_phone || '')
+  }
+
+  const saveEdit = async () => {
+    if (!editingPlayer) return
+
+    const { error } = await supabase
+      .from('program_registrations')
+      .update({
+        player_name: editName,
+        player_email: editEmail,
+        player_phone: editPhone,
+      })
+      .eq('id', editingPlayer.id)
+
+    if (error) {
+      alert('Error updating player: ' + error.message)
+    } else {
+      setEditingPlayer(null)
+      fetchRegistrations()
+    }
+  }
+
+  const startMove = (reg: Registration) => {
+    if (allPrograms.length === 0) {
+      alert('No other programs available to move to.')
+      return
+    }
+    setMovingPlayer(reg)
+  }
+
+  const confirmMove = async (targetProgram: string) => {
+    if (!movingPlayer) return
+
+    const { error: insertError } = await supabase
+      .from('program_registrations')
+      .insert({
+        program_name: targetProgram,
+        player_name: movingPlayer.player_name,
+        player_email: movingPlayer.player_email,
+        player_phone: movingPlayer.player_phone,
+        order_id: movingPlayer.order_id,
+        source: 'transfer',
+        payment_method: movingPlayer.payment_method,
+        amount: movingPlayer.amount,
+        status: 'active',
+        notes: `Transferred from "${programName}" on ${new Date().toLocaleDateString()}`,
+      })
+
+    if (insertError) {
+      alert('Error moving player: ' + insertError.message)
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from('program_registrations')
+      .update({ status: 'transferred_out' })
+      .eq('id', movingPlayer.id)
+
+    if (updateError) {
+      alert('Error updating old registration: ' + updateError.message)
+    } else {
+      alert(`✓ ${movingPlayer.player_name} successfully moved to ${targetProgram}`)
+      setMovingPlayer(null)
+      fetchRegistrations()
+    }
+  }
+
   const moveRegistration = async (id: number, playerName: string, currentProgram: string) => {
     if (allPrograms.length === 0) {
-      alert('No other programs available')
+      alert('No other programs available to move to.')
       return
     }
 
-    const targetProgram = prompt(`Move ${playerName} to which program?\n\nAvailable programs:\n${allPrograms.join('\n')}\n\nEnter program name exactly:`)
+    // Create numbered list for easier selection
+    const programList = allPrograms.map((p, i) => `${i + 1}. ${p}`).join('\n')
+    const selection = prompt(
+      `Move ${playerName} to which program?\n\n${programList}\n\nEnter the NUMBER or full program name:`
+    )
     
-    if (!targetProgram) return
+    if (!selection) return
     
-    if (!allPrograms.includes(targetProgram)) {
-      alert('Invalid program name. Please enter exactly as shown.')
-      return
+    // Check if user entered a number
+    const selectionNum = parseInt(selection)
+    let targetProgram: string
+    
+    if (!isNaN(selectionNum) && selectionNum >= 1 && selectionNum <= allPrograms.length) {
+      targetProgram = allPrograms[selectionNum - 1]
+    } else {
+      // User typed program name
+      targetProgram = selection
+      if (!allPrograms.includes(targetProgram)) {
+        alert('Invalid selection. Please enter a number (1-' + allPrograms.length + ') or exact program name.')
+        return
+      }
     }
 
-    if (!confirm(`Move ${playerName} from "${currentProgram}" to "${targetProgram}"?`)) return
+    if (!confirm(`Move ${playerName} from:\n"${currentProgram}"\n\nTo:\n"${targetProgram}"\n\nConfirm?`)) return
 
     // Get the registration details
     const reg = registrations.find(r => r.id === id)
@@ -177,7 +285,7 @@ export default function ProgramRosterPage() {
     if (updateError) {
       alert('Error updating old registration: ' + updateError.message)
     } else {
-      alert(`✓ ${playerName} moved to ${targetProgram}`)
+      alert(`✓ ${playerName} successfully moved to:\n${targetProgram}`)
       fetchRegistrations()
     }
   }
@@ -547,7 +655,21 @@ export default function ProgramRosterPage() {
                         {reg.status === 'active' && (
                           <>
                             <button
-                              onClick={() => moveRegistration(reg.id, reg.player_name, programName)}
+                              onClick={() => startEdit(reg)}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#8b5cf6',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => startMove(reg)}
                               style={{
                                 padding: '0.25rem 0.75rem',
                                 backgroundColor: '#0070f3',
@@ -601,6 +723,192 @@ export default function ProgramRosterPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Player Modal */}
+      {editingPlayer && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '8px',
+            maxWidth: '500px',
+            width: '90%',
+          }}>
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              Edit Player
+            </h3>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Name *
+              </label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Email
+              </label>
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Phone
+              </label>
+              <input
+                type="tel"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setEditingPlayer(null)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#0070f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move Player Modal */}
+      {movingPlayer && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '2rem',
+            borderRadius: '8px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+          }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              Move {movingPlayer.player_name}
+            </h3>
+            <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+              Select the program to move this player to:
+            </p>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              {allPrograms.map((program) => (
+                <button
+                  key={program}
+                  onClick={() => confirmMove(program)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '1rem',
+                    marginBottom: '0.5rem',
+                    backgroundColor: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f0f9ff'
+                    e.currentTarget.style.borderColor = '#0070f3'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'white'
+                    e.currentTarget.style.borderColor = '#ddd'
+                  }}
+                >
+                  {program}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setMovingPlayer(null)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
