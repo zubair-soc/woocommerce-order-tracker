@@ -174,10 +174,10 @@ export default function ProgramRosterPage() {
         )
         
         if (transferredReg) {
-          // Remove from target program
+          // Delete from target program (not just mark removed)
           await supabase
             .from('program_registrations')
-            .update({ status: 'removed' })
+            .delete()
             .eq('id', transferredReg.id)
         }
       }

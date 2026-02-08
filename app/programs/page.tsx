@@ -11,20 +11,22 @@ interface ProgramSummary {
   activeCount: number
   color?: string
   category: string
+  status: string
 }
 
 export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramSummary[]>([])
-  const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
+  const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'all'>('open_registration')
   const [coloringProgram, setColoringProgram] = useState<string | null>(null)
   const [programColors, setProgramColors] = useState<{[key: string]: string}>({})
+  const [programStatuses, setProgramStatuses] = useState<{[key: string]: string}>({})
 
-  // Fetch colors once on mount
+  // Fetch colors and statuses once on mount
   useEffect(() => {
-    const fetchColors = async () => {
+    const fetchColorsAndStatuses = async () => {
+      // Fetch colors
       const colorsResponse = await fetch('/api/program-colors')
       const colorsData = await colorsResponse.json()
       if (colorsData.colors) {
@@ -34,23 +36,23 @@ export default function ProgramsPage() {
         })
         setProgramColors(colorMap)
       }
+
+      // Fetch statuses
+      const statusResponse = await fetch('/api/program-settings')
+      const statusData = await statusResponse.json()
+      if (statusData.settings) {
+        const statusMap: {[key: string]: string} = {}
+        statusData.settings.forEach((s: any) => {
+          statusMap[s.program_name] = s.status
+        })
+        setProgramStatuses(statusMap)
+      }
     }
-    fetchColors()
+    fetchColorsAndStatuses()
   }, [])
 
   const fetchPrograms = async () => {
     setLoading(true)
-    
-    // Fetch products for status filtering
-    const { data: productsData, error: productsError} = await supabase
-      .from('products')
-      .select('*')
-
-    if (productsError) {
-      console.error('Error fetching products:', productsError)
-    } else {
-      setProducts(productsData || [])
-    }
     
     const { data: registrations, error } = await supabase
       .from('program_registrations')
@@ -62,45 +64,13 @@ export default function ProgramsPage() {
       return
     }
 
-    // Normalize product name helper
-    const normalizeProductName = (name: string): string => {
-      return name
-        .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
-        .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
-        .replace(/\s*-?\s*FULL\s*$/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-    }
-
-    // Check if program is merchandise
+    // Helper to check if program is merchandise
     const isMerchandise = (programName: string): boolean => {
       const programLower = programName.toLowerCase()
-      return !(
-        programLower.includes('beginner hockey') ||
-        programLower.includes('pre-beginner') ||
-        programLower.includes('powerskating') ||
-        programLower.includes('power skating') ||
-        programLower.includes('shooting & puck handling') ||
-        programLower.includes('shooting and puck handling') ||
-        programLower.includes('goalie camp')
-      )
-    }
-
-    // Check if program is active (product is published)
-    const isProgramActive = (programName: string): boolean => {
-      // Try exact match first
-      let product = productsData?.find(p => normalizeProductName(p.name) === programName)
-      
-      // If no exact match, try fuzzy match (program name contains product name or vice versa)
-      if (!product) {
-        const normalizedProgram = normalizeProductName(programName).toLowerCase()
-        product = productsData?.find(p => {
-          const normalizedProduct = normalizeProductName(p.name).toLowerCase()
-          return normalizedProgram.includes(normalizedProduct) || normalizedProduct.includes(normalizedProgram)
-        })
-      }
-      
-      return product ? product.status === 'publish' : false // Default to false if no product found (hide if not matched)
+      return programLower.includes('hoodie') || 
+             programLower.includes('jersey') || 
+             programLower.includes('merchandise') ||
+             programLower.includes('apparel')
     }
 
     // Determine category for a program
@@ -111,7 +81,7 @@ export default function ProgramsPage() {
       }
       if (nameLower.includes('powerskating') || nameLower.includes('power skating') ||
           nameLower.includes('shooting') || nameLower.includes('puck handling') || 
-          nameLower.includes('goalie camp')) {
+          nameLower.includes('goalie')) {
         return 'Skills Development'
       }
       return 'Other'
@@ -136,11 +106,12 @@ export default function ProgramsPage() {
       activeCount: counts.active,
       color: programColors[name],
       category: getCategory(name),
+      status: programStatuses[name] || 'open_registration', // Default to open_registration
     }))
 
-    // Filter by active/all based on program filter
-    if (programFilter === 'active') {
-      programList = programList.filter(program => isProgramActive(program.name))
+    // Filter by status
+    if (statusFilter !== 'all') {
+      programList = programList.filter(program => program.status === statusFilter)
     }
 
     // Sort by category first, then alphabetically within category
@@ -197,9 +168,25 @@ export default function ProgramsPage() {
     setSyncing(false)
   }
 
+  const saveStatus = async (programName: string, status: string) => {
+    await fetch('/api/program-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ program_name: programName, status })
+    })
+    
+    // Update statuses state
+    setProgramStatuses(prev => ({ ...prev, [programName]: status }))
+    
+    // Update programs array with new status to trigger re-render
+    setPrograms(prev => prev.map(p => 
+      p.name === programName ? { ...p, status } : p
+    ))
+  }
+
   useEffect(() => {
     fetchPrograms()
-  }, [programFilter])
+  }, [statusFilter])
 
   // Memoize program rendering to avoid recalculating categories on every render
   const programElements = useMemo(() => {
@@ -255,6 +242,40 @@ export default function ProgramsPage() {
                   border: '2px solid #e5e7eb',
                 }}
               />
+            </div>
+
+            {/* Status dropdown */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '180px',
+                display: 'flex',
+                alignItems: 'center',
+                paddingRight: '1rem',
+                flexShrink: 0,
+              }}
+            >
+              <select
+                value={program.status}
+                onChange={(e) => {
+                  e.stopPropagation()
+                  saveStatus(program.name, e.target.value)
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  backgroundColor: program.status === 'open_registration' ? '#dcfce7' : 
+                                   program.status === 'in_progress' ? '#dbeafe' : '#f3f4f6',
+                }}
+              >
+                <option value="open_registration">Open Registration</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
             </div>
 
             {/* Program details - clickable link */}
@@ -334,7 +355,7 @@ export default function ProgramsPage() {
         </Link>
       </div>
 
-      {/* Active/All Programs Filter */}
+      {/* Status Filter */}
       <div style={{ 
         marginBottom: '2rem',
         padding: '0.75rem',
@@ -342,26 +363,46 @@ export default function ProgramsPage() {
         borderRadius: '6px',
         border: '1px solid #bfdbfe'
       }}>
-        <div style={{ display: 'flex', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
             <input
               type="radio"
-              name="programFilter"
-              checked={programFilter === 'active'}
-              onChange={() => setProgramFilter('active')}
+              name="statusFilter"
+              checked={statusFilter === 'open_registration'}
+              onChange={() => setStatusFilter('open_registration')}
               style={{ marginRight: '0.5rem', cursor: 'pointer' }}
             />
-            Active Programs Only
+            Open Registration
           </label>
           <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
             <input
               type="radio"
-              name="programFilter"
-              checked={programFilter === 'all'}
-              onChange={() => setProgramFilter('all')}
+              name="statusFilter"
+              checked={statusFilter === 'in_progress'}
+              onChange={() => setStatusFilter('in_progress')}
               style={{ marginRight: '0.5rem', cursor: 'pointer' }}
             />
-            All Programs (including completed)
+            In Progress
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+            <input
+              type="radio"
+              name="statusFilter"
+              checked={statusFilter === 'completed'}
+              onChange={() => setStatusFilter('completed')}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            Completed
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+            <input
+              type="radio"
+              name="statusFilter"
+              checked={statusFilter === 'all'}
+              onChange={() => setStatusFilter('all')}
+              style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+            />
+            All Programs
           </label>
         </div>
       </div>
