@@ -33,6 +33,10 @@ export default function ProgramRosterPage() {
   const [showAllProgramsInMove, setShowAllProgramsInMove] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Registration | null>(null)
   const [movingPlayer, setMovingPlayer] = useState<Registration | null>(null)
+  const [removingPlayer, setRemovingPlayer] = useState<Registration | null>(null)
+  const [removeNote, setRemoveNote] = useState('')
+  const [transferNote, setTransferNote] = useState('')
+  const [programInfo, setProgramInfo] = useState<{start_date?: string, notes?: string} | null>(null)
   
   // Form state
   const [playerName, setPlayerName] = useState('')
@@ -42,14 +46,30 @@ export default function ProgramRosterPage() {
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   
-  // Edit form state
+  // Edit form state (complete)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editPhone, setEditPhone] = useState('')
+  const [editPaymentMethod, setEditPaymentMethod] = useState('')
+  const [editAmount, setEditAmount] = useState('')
+  const [editNotes, setEditNotes] = useState('')
 
 
   const fetchRegistrations = async () => {
     setLoading(true)
+    
+    // Fetch program settings (start date, notes)
+    const programSettingsResponse = await fetch('/api/program-settings')
+    const programSettingsData = await programSettingsResponse.json()
+    if (programSettingsData.settings) {
+      const setting = programSettingsData.settings.find((s: any) => s.program_name === programName)
+      if (setting) {
+        setProgramInfo({
+          start_date: setting.start_date,
+          notes: setting.notes
+        })
+      }
+    }
     
     // Fetch products for active filtering
     const { data: productsData, error: productsError } = await supabase
@@ -133,16 +153,32 @@ export default function ProgramRosterPage() {
   }
 
   const removeRegistration = async (id: number, playerName: string) => {
-    if (!confirm(`Remove ${playerName} from this program? (Can be restored later)`)) return
+    const reg = registrations.find(r => r.id === id)
+    if (!reg) return
+    setRemovingPlayer(reg)
+    setRemoveNote('')
+  }
+
+  const confirmRemove = async () => {
+    if (!removingPlayer) return
+
+    const updateData: any = { status: 'removed' }
+    if (removeNote.trim()) {
+      updateData.notes = removingPlayer.notes 
+        ? `${removingPlayer.notes}\n[Removed: ${removeNote}]`
+        : `[Removed: ${removeNote}]`
+    }
 
     const { error } = await supabase
       .from('program_registrations')
-      .update({ status: 'removed' })
-      .eq('id', id)
+      .update(updateData)
+      .eq('id', removingPlayer.id)
 
     if (error) {
       alert('Error removing player: ' + error.message)
     } else {
+      setRemovingPlayer(null)
+      setRemoveNote('')
       fetchRegistrations()
     }
   }
@@ -202,18 +238,32 @@ export default function ProgramRosterPage() {
     setEditName(reg.player_name)
     setEditEmail(reg.player_email || '')
     setEditPhone(reg.player_phone || '')
+    setEditPaymentMethod(reg.payment_method)
+    setEditAmount(reg.amount)
+    setEditNotes(reg.notes || '')
   }
 
   const saveEdit = async () => {
     if (!editingPlayer) return
 
+    // Only update payment/amount/notes for manual entries
+    const canEditPayment = editingPlayer.source === 'manual'
+
+    const updateData: any = {
+      player_name: editName,
+      player_email: editEmail,
+      player_phone: editPhone,
+    }
+
+    if (canEditPayment) {
+      updateData.payment_method = editPaymentMethod
+      updateData.amount = editAmount
+      updateData.notes = editNotes
+    }
+
     const { error } = await supabase
       .from('program_registrations')
-      .update({
-        player_name: editName,
-        player_email: editEmail,
-        player_phone: editPhone,
-      })
+      .update(updateData)
       .eq('id', editingPlayer.id)
 
     if (error) {
@@ -235,10 +285,9 @@ export default function ProgramRosterPage() {
   const confirmMove = async (targetProgram: string) => {
     if (!movingPlayer) return
 
-    // Add confirmation
-    if (!confirm(`Move ${movingPlayer.player_name} to:\n\n"${targetProgram}"\n\nConfirm?`)) {
-      return
-    }
+    const noteText = transferNote.trim() 
+      ? `Transferred from "${programName}" on ${new Date().toLocaleDateString()}. Note: ${transferNote}`
+      : `Transferred from "${programName}" on ${new Date().toLocaleDateString()}`
 
     const { error: insertError } = await supabase
       .from('program_registrations')
@@ -252,7 +301,7 @@ export default function ProgramRosterPage() {
         payment_method: movingPlayer.payment_method,
         amount: movingPlayer.amount,
         status: 'active',
-        notes: `Transferred from "${programName}" on ${new Date().toLocaleDateString()}`,
+        notes: noteText,
       })
 
     if (insertError) {
@@ -270,6 +319,7 @@ export default function ProgramRosterPage() {
     } else {
       alert(`✓ ${movingPlayer.player_name} successfully moved to ${targetProgram}`)
       setMovingPlayer(null)
+      setTransferNote('')
       fetchRegistrations()
     }
   }
@@ -419,6 +469,37 @@ export default function ProgramRosterPage() {
           {registrations.length !== activeCount && ` (${registrations.length} total)`}
         </p>
       </div>
+
+      {/* Program Info Banner */}
+      {(programInfo?.start_date || programInfo?.notes) && (
+        <div style={{
+          marginBottom: '2rem',
+          padding: '1rem 1.5rem',
+          backgroundColor: '#f0f9ff',
+          borderRadius: '8px',
+          border: '1px solid #bfdbfe',
+        }}>
+          {programInfo.start_date && (
+            <div style={{ marginBottom: programInfo.notes ? '0.5rem' : 0 }}>
+              <strong>📅 Starts:</strong> {(() => {
+                const dateStr = programInfo.start_date.split('T')[0]
+                const [year, month, day] = dateStr.split('-')
+                const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+                return localDate.toLocaleDateString('en-US', { 
+                  month: 'long', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })
+              })()}
+            </div>
+          )}
+          {programInfo.notes && (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              <strong>📝 Notes:</strong> {programInfo.notes}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -571,6 +652,7 @@ export default function ProgramRosterPage() {
                   }}
                 >
                   <option value="e-transfer">E-transfer</option>
+                  <option value="credit-card">Credit Card</option>
                   <option value="cash">Cash</option>
                   <option value="comp">Comp/Free</option>
                   <option value="other">Other</option>
@@ -808,11 +890,13 @@ export default function ProgramRosterPage() {
             backgroundColor: 'white',
             padding: '2rem',
             borderRadius: '8px',
-            maxWidth: '500px',
+            maxWidth: '600px',
             width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
           }}>
             <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              Edit Player
+              {editingPlayer.source === 'manual' ? 'Edit Player' : 'View Player Details'}
             </h3>
             
             <div style={{ marginBottom: '1rem' }}>
@@ -849,7 +933,7 @@ export default function ProgramRosterPage() {
               />
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
                 Phone
               </label>
@@ -866,6 +950,101 @@ export default function ProgramRosterPage() {
               />
             </div>
 
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Payment Method
+              </label>
+              {editingPlayer.source === 'manual' ? (
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                  }}
+                >
+                  <option value="e-transfer">E-transfer</option>
+                  <option value="credit-card">Credit Card</option>
+                  <option value="cash">Cash</option>
+                  <option value="comp">Comp/Free</option>
+                  <option value="other">Other</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={editingPlayer.source === 'order' ? `Order #${editingPlayer.order_id}` : 
+                         editingPlayer.source === 'transfer' ? `Transfer (Order #${editingPlayer.order_id})` :
+                         editPaymentMethod}
+                  disabled
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    backgroundColor: '#f3f4f6',
+                    color: '#666',
+                  }}
+                />
+              )}
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Amount
+              </label>
+              <input
+                type="text"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                disabled={editingPlayer.source !== 'manual'}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  backgroundColor: editingPlayer.source === 'manual' ? 'white' : '#f3f4f6',
+                  color: editingPlayer.source === 'manual' ? 'inherit' : '#666',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Notes
+              </label>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                disabled={editingPlayer.source !== 'manual'}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  backgroundColor: editingPlayer.source === 'manual' ? 'white' : '#f3f4f6',
+                  color: editingPlayer.source === 'manual' ? 'inherit' : '#666',
+                }}
+                placeholder={editingPlayer.source === 'manual' ? 'Add notes...' : ''}
+              />
+            </div>
+
+            {editingPlayer.source !== 'manual' && (
+              <div style={{ 
+                marginBottom: '1.5rem',
+                padding: '0.75rem',
+                backgroundColor: '#fef3c7',
+                borderRadius: '4px',
+                fontSize: '0.875rem',
+              }}>
+                ℹ️ Payment details are read-only for {editingPlayer.source === 'order' ? 'WooCommerce orders' : 'transferred players'}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setEditingPlayer(null)}
@@ -878,21 +1057,23 @@ export default function ProgramRosterPage() {
                   cursor: 'pointer',
                 }}
               >
-                Cancel
+                {editingPlayer.source === 'manual' ? 'Cancel' : 'Close'}
               </button>
-              <button
-                onClick={saveEdit}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#0070f3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Save Changes
-              </button>
+              {editingPlayer.source === 'manual' && (
+                <button
+                  onClick={saveEdit}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#0070f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Save Changes
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -931,6 +1112,24 @@ export default function ProgramRosterPage() {
             <p style={{ marginBottom: '1rem', color: '#666' }}>
               Select the program to move this player to:
             </p>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Note (Optional)
+              </label>
+              <input
+                type="text"
+                value={transferNote}
+                onChange={(e) => setTransferNote(e.target.value)}
+                placeholder="e.g., Schedule conflict, Parent request"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
             
             {/* Active/All Programs Toggle */}
             <div style={{ marginBottom: '1rem' }}>
@@ -1027,6 +1226,89 @@ export default function ProgramRosterPage() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Modal */}
+      {removingPlayer && (
+        <div 
+          onClick={() => setRemovingPlayer(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}>
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '500px',
+              width: '90%',
+            }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              Remove {removingPlayer.player_name}?
+            </h3>
+            
+            <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+              Player can be restored later from the removed list.
+            </p>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Reason (Optional)
+              </label>
+              <input
+                type="text"
+                value={removeNote}
+                onChange={(e) => setRemoveNote(e.target.value)}
+                placeholder="e.g., Injury, Schedule conflict"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setRemovingPlayer(null)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemove}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -369,23 +369,6 @@ export default function ProgramsPage() {
               </button>
             </div>
 
-            {/* Start date display */}
-            {program.start_date && (
-              <div style={{
-                padding: '0 0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                fontSize: '0.875rem',
-                color: '#666',
-              }}>
-                📅 {new Date(program.start_date).toLocaleDateString('en-US', { 
-                  month: 'short', 
-                  day: 'numeric',
-                  year: 'numeric'
-                })}
-              </div>
-            )}
-
             {/* Status dropdown */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -469,7 +452,36 @@ export default function ProgramsPage() {
                     {program.count !== program.activeCount && ` (${program.count} total)`}
                   </div>
                 </div>
-                <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  {program.start_date && (() => {
+                    // Fix timezone by parsing date components directly
+                    const dateStr = program.start_date.split('T')[0]
+                    const [year, month, day] = dateStr.split('-')
+                    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+                    
+                    // Check if within 10 days
+                    const today = new Date()
+                    today.setHours(0, 0, 0, 0)
+                    const diffTime = localDate.getTime() - today.getTime()
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                    const isNearStart = diffDays >= 0 && diffDays <= 10
+                    
+                    return (
+                      <div style={{
+                        fontSize: '0.875rem',
+                        color: isNearStart ? '#dc2626' : '#666',
+                        fontWeight: isNearStart ? '600' : '400',
+                      }}>
+                        📅 {localDate.toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </div>
+                    )
+                  })()}
+                  <div style={{ fontSize: '1.5rem', color: '#0070f3' }}>→</div>
+                </div>
               </div>
             </Link>
           </div>
