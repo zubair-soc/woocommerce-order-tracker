@@ -20,25 +20,19 @@ export default function ProgramsPage() {
   const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'all'>('open_registration')
   const [programStatuses, setProgramStatuses] = useState<{[key: string]: string}>({})
 
-  // Fetch statuses once on mount
-  useEffect(() => {
-    const fetchStatuses = async () => {
-      // Fetch statuses
-      const statusResponse = await fetch('/api/program-settings')
-      const statusData = await statusResponse.json()
-      if (statusData.settings) {
-        const statusMap: {[key: string]: string} = {}
-        statusData.settings.forEach((s: any) => {
-          statusMap[s.program_name] = s.status
-        })
-        setProgramStatuses(statusMap)
-      }
-    }
-    fetchStatuses()
-  }, [])
-
   const fetchPrograms = async () => {
     setLoading(true)
+    
+    // Fetch fresh statuses from database every time (don't rely on stale state)
+    const statusResponse = await fetch('/api/program-settings')
+    const statusData = await statusResponse.json()
+    const freshStatuses: {[key: string]: string} = {}
+    if (statusData.settings) {
+      statusData.settings.forEach((s: any) => {
+        freshStatuses[s.program_name] = s.status
+      })
+      setProgramStatuses(freshStatuses) // Update state too
+    }
     
     const { data: registrations, error } = await supabase
       .from('program_registrations')
@@ -50,13 +44,16 @@ export default function ProgramsPage() {
       return
     }
 
-    // Helper to check if program is merchandise
-    const isMerchandise = (programName: string): boolean => {
-      const programLower = programName.toLowerCase()
-      return programLower.includes('hoodie') || 
-             programLower.includes('jersey') || 
-             programLower.includes('merchandise') ||
-             programLower.includes('apparel')
+    // Whitelist of actual programs (not merchandise)
+    const isActualProgram = (programName: string): boolean => {
+      const nameLower = programName.toLowerCase()
+      return nameLower.includes('beginner hockey') ||
+             nameLower.includes('pre-beginner') ||
+             nameLower.includes('powerskating') ||
+             nameLower.includes('power skating') ||
+             nameLower.includes('shooting') ||
+             nameLower.includes('puck handling') ||
+             nameLower.includes('goalie')
     }
 
     // Determine category for a program
@@ -77,8 +74,8 @@ export default function ProgramsPage() {
     const programMap = new Map<string, { total: number, active: number }>()
     
     registrations?.forEach(reg => {
-      // Skip merchandise
-      if (isMerchandise(reg.program_name)) return
+      // Skip if not an actual program (whitelist approach)
+      if (!isActualProgram(reg.program_name)) return
       
       const current = programMap.get(reg.program_name) || { total: 0, active: 0 }
       current.total++
@@ -91,8 +88,11 @@ export default function ProgramsPage() {
       count: counts.total,
       activeCount: counts.active,
       category: getCategory(name),
-      status: programStatuses[name] || 'open_registration', // Default to open_registration
+      status: freshStatuses[name] || 'open_registration', // Use fresh statuses from database
     }))
+
+    // Filter out "Other" category (merchandise that slipped through whitelist)
+    programList = programList.filter(p => p.category !== 'Other')
 
     // Filter by status
     if (statusFilter !== 'all') {
@@ -102,11 +102,10 @@ export default function ProgramsPage() {
     // Sort by category first, then alphabetically within category
     programList.sort((a, b) => {
       if (a.category !== b.category) {
-        // Sort categories: Beginner Hockey, Skills Development, Other
+        // Sort categories: Beginner Hockey, Skills Development
         const categoryOrder: {[key: string]: number} = {
           'Beginner Hockey': 1,
           'Skills Development': 2,
-          'Other': 3
         }
         return (categoryOrder[a.category] || 999) - (categoryOrder[b.category] || 999)
       }
@@ -164,6 +163,11 @@ export default function ProgramsPage() {
   useEffect(() => {
     fetchPrograms()
   }, [statusFilter])
+
+  // Also fetch on initial mount (handles back button)
+  useEffect(() => {
+    fetchPrograms()
+  }, [])
 
   // Memoize program rendering to avoid recalculating categories on every render
   const programElements = useMemo(() => {
