@@ -16,6 +16,7 @@ interface Registration {
   payment_method: string
   amount: string
   status: string
+  payment_status: string
   notes: string
   created_at: string
 }
@@ -746,6 +747,7 @@ export default function ProgramRosterPage() {
                   <th style={tableHeaderStyle}>Phone</th>
                   <th style={tableHeaderStyle}>Payment</th>
                   <th style={tableHeaderStyle}>Amount</th>
+                  <th style={tableHeaderStyle}>Unpaid</th>
                   <th style={tableHeaderStyle}>Source</th>
                   <th style={tableHeaderStyle}>Status</th>
                   <th style={tableHeaderStyle}>Actions</th>
@@ -772,6 +774,30 @@ export default function ProgramRosterPage() {
                       )}
                     </td>
                     <td style={tableCellStyle}>${reg.amount}</td>
+                    <td style={tableCellStyle}>
+                      <input
+                        type="checkbox"
+                        checked={reg.payment_status === 'unpaid'}
+                        onChange={async (e) => {
+                          const newStatus = e.target.checked ? 'unpaid' : 'paid'
+                          const { error } = await supabase
+                            .from('program_registrations')
+                            .update({ payment_status: newStatus })
+                            .eq('id', reg.id)
+                          
+                          if (!error) {
+                            fetchRegistrations()
+                          }
+                        }}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          cursor: 'pointer',
+                          accentColor: '#dc2626', // Red checkbox
+                        }}
+                        title={reg.payment_status === 'unpaid' ? 'Click to mark as paid' : 'Click to mark as unpaid'}
+                      />
+                    </td>
                     <td style={tableCellStyle}>
                       <span style={{
                         padding: '0.25rem 0.5rem',
