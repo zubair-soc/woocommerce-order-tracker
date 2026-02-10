@@ -25,11 +25,35 @@ export async function POST() {
     const registrationsToSync: any[] = []
 
     orders?.forEach(order => {
-      if (!order.products || !Array.isArray(order.products)) return
+      // Parse products if it's a string
+      let products = order.products
+      if (typeof products === 'string') {
+        try {
+          products = JSON.parse(products)
+        } catch (e) {
+          console.error('Failed to parse products for order', order.id)
+          return
+        }
+      }
+      
+      if (!products || !Array.isArray(products)) return
 
-      order.products.forEach((product: any) => {
+      products.forEach((product: any) => {
         const programName = normalizeProductName(product.name || '')
         if (!programName) return
+
+        // Whitelist: Only sync actual programs (not merchandise)
+        const nameLower = programName.toLowerCase()
+        const isActualProgram = 
+          nameLower.includes('beginner hockey') ||
+          nameLower.includes('pre-beginner') ||
+          nameLower.includes('powerskating') ||
+          nameLower.includes('power skating') ||
+          nameLower.includes('shooting') ||
+          nameLower.includes('puck handling') ||
+          nameLower.includes('goalie')
+        
+        if (!isActualProgram) return
 
         registrationsToSync.push({
           program_name: programName,
