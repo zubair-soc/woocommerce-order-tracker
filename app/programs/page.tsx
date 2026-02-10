@@ -37,6 +37,14 @@ export default function ProgramsPage() {
   const [editNotes, setEditNotes] = useState('')
   const [viewingTemplate, setViewingTemplate] = useState(false)
   const [emailTemplate, setEmailTemplate] = useState('')
+  
+  // Template Library
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false)
+  const [templates, setTemplates] = useState<any[]>([])
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null)
+  const [editTemplateName, setEditTemplateName] = useState('')
+  const [editTemplateDesc, setEditTemplateDesc] = useState('')
+  const [editTemplateHtml, setEditTemplateHtml] = useState('')
 
   // Save filter to sessionStorage whenever it changes
   useEffect(() => {
@@ -216,6 +224,67 @@ export default function ProgramsPage() {
     setEditStartDate(program.start_date || '')
     setEditNotes(program.notes || '')
     setEmailTemplate(program.email_template || '')
+  }
+
+  // Template Library Functions
+  const fetchTemplates = async () => {
+    const response = await fetch('/api/email-templates')
+    const data = await response.json()
+    setTemplates(data.templates || [])
+  }
+
+  const openTemplateLibrary = () => {
+    fetchTemplates()
+    setShowTemplateLibrary(true)
+  }
+
+  const openTemplateEditor = (template?: any) => {
+    if (template) {
+      setEditingTemplateId(template.id)
+      setEditTemplateName(template.name)
+      setEditTemplateDesc(template.description || '')
+      setEditTemplateHtml(template.template_html)
+    } else {
+      setEditingTemplateId(null)
+      setEditTemplateName('')
+      setEditTemplateDesc('')
+      setEditTemplateHtml('')
+    }
+  }
+
+  const saveTemplate = async () => {
+    if (!editTemplateName || !editTemplateHtml) {
+      alert('Name and template HTML are required')
+      return
+    }
+
+    await fetch('/api/email-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editingTemplateId,
+        name: editTemplateName,
+        description: editTemplateDesc,
+        template_html: editTemplateHtml,
+      })
+    })
+
+    setEditingTemplateId(null)
+    fetchTemplates()
+    alert('✅ Template saved!')
+  }
+
+  const deleteTemplate = async (id: number, name: string) => {
+    if (!confirm(`Delete template "${name}"?`)) return
+
+    await fetch(`/api/email-templates?id=${id}`, { method: 'DELETE' })
+    fetchTemplates()
+    alert('✅ Template deleted')
+  }
+
+  const copyTemplate = async (html: string, name: string) => {
+    await navigator.clipboard.writeText(html)
+    alert(`✅ "${name}" copied to clipboard!`)
   }
 
   const saveEdit = async () => {
@@ -428,6 +497,22 @@ export default function ProgramsPage() {
           }}
         >
           {syncing ? 'Syncing...' : '🔄 Sync Registrations from Orders'}
+        </button>
+
+        <button
+          onClick={openTemplateLibrary}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            fontWeight: '500',
+          }}
+        >
+          📧 Email Templates
         </button>
 
         <Link
@@ -776,6 +861,282 @@ export default function ProgramsPage() {
           </div>
         </div>
       )}
+
+      {/* Template Library Modal */}
+      {showTemplateLibrary && (
+        <div
+          onClick={() => setShowTemplateLibrary(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '900px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: '600', margin: 0 }}>
+                📧 Email Template Library
+              </h2>
+              <button
+                onClick={() => setShowTemplateLibrary(false)}
+                style={{
+                  padding: '0.5rem',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <button
+              onClick={() => openTemplateEditor()}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '1rem',
+                cursor: 'pointer',
+                marginBottom: '1.5rem',
+                fontWeight: '500',
+              }}
+            >
+              + New Template
+            </button>
+
+            {templates.length === 0 ? (
+              <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
+                No templates yet. Click "New Template" to add one.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {templates.map((template) => (
+                  <div
+                    key={template.id}
+                    style={{
+                      padding: '1.5rem',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      backgroundColor: '#f9fafb',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: '600', margin: 0, marginBottom: '0.25rem' }}>
+                          {template.name}
+                        </h3>
+                        {template.description && (
+                          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>
+                            {template.description}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => openTemplateEditor(template)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => copyTemplate(template.template_html, template.name)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          📋 Copy
+                        </button>
+                        <button
+                          onClick={() => deleteTemplate(template.id, template.name)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Template Editor Modal */}
+      {editingTemplateId !== null || (editTemplateName || editTemplateHtml) ? (
+        <div
+          onClick={() => setEditingTemplateId(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '900px',
+              width: '90%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              {editingTemplateId ? 'Edit Template' : 'New Template'}
+            </h3>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Template Name *
+              </label>
+              <input
+                type="text"
+                value={editTemplateName}
+                onChange={(e) => setEditTemplateName(e.target.value)}
+                placeholder="e.g., Power Skating"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '1rem',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Description
+              </label>
+              <input
+                type="text"
+                value={editTemplateDesc}
+                onChange={(e) => setEditTemplateDesc(e.target.value)}
+                placeholder="e.g., Used for all Power Skating sessions"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '1rem',
+                }}
+              />
+            </div>
+
+            <div style={{ flex: 1, marginBottom: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                HTML Template *
+              </label>
+              <textarea
+                value={editTemplateHtml}
+                onChange={(e) => setEditTemplateHtml(e.target.value)}
+                placeholder="Paste your HTML email template here..."
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  padding: '0.75rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '0.875rem',
+                  fontFamily: 'monospace',
+                  resize: 'none',
+                  minHeight: '300px',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setEditingTemplateId(null)
+                  setEditTemplateName('')
+                  setEditTemplateDesc('')
+                  setEditTemplateHtml('')
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveTemplate}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#0070f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
