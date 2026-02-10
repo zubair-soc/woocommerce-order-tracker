@@ -14,6 +14,7 @@ interface ProgramSummary {
   display_order: number
   start_date?: string
   notes?: string
+  email_template?: string
 }
 
 export default function ProgramsPage() {
@@ -34,6 +35,8 @@ export default function ProgramsPage() {
   const [editingProgram, setEditingProgram] = useState<string | null>(null)
   const [editStartDate, setEditStartDate] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [viewingTemplate, setViewingTemplate] = useState(false)
+  const [emailTemplate, setEmailTemplate] = useState('')
 
   // Save filter to sessionStorage whenever it changes
   useEffect(() => {
@@ -57,7 +60,8 @@ export default function ProgramsPage() {
           status: s.status,
           display_order: s.display_order || 999,
           start_date: s.start_date,
-          notes: s.notes
+          notes: s.notes,
+          email_template: s.email_template
         }
       })
       setProgramStatuses(freshStatuses) // Update state too
@@ -122,7 +126,8 @@ export default function ProgramsPage() {
         status: settings.status || 'open_registration',
         display_order: settings.display_order || 999,
         start_date: settings.start_date,
-        notes: settings.notes
+        notes: settings.notes,
+        email_template: settings.email_template
       }
     })
 
@@ -210,6 +215,7 @@ export default function ProgramsPage() {
     setEditingProgram(program.name)
     setEditStartDate(program.start_date || '')
     setEditNotes(program.notes || '')
+    setEmailTemplate(program.email_template || '')
   }
 
   const saveEdit = async () => {
@@ -605,6 +611,27 @@ export default function ProgramsPage() {
               />
             </div>
 
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                📧 Email Template
+              </label>
+              <button
+                onClick={() => setViewingTemplate(true)}
+                type="button"
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: emailTemplate ? '#10b981' : '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                }}
+              >
+                {emailTemplate ? '📄 View/Edit Template' : '➕ Add Template'}
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setEditingProgram(null)}
@@ -633,6 +660,117 @@ export default function ProgramsPage() {
                 }}
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Template Modal */}
+      {viewingTemplate && (
+        <div
+          onClick={() => setViewingTemplate(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '800px',
+              width: '90%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
+              📧 Email Template: {editingProgram}
+            </h3>
+
+            <textarea
+              value={emailTemplate}
+              onChange={(e) => setEmailTemplate(e.target.value)}
+              placeholder="Paste your HTML email template here..."
+              style={{
+                flex: 1,
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '0.875rem',
+                fontFamily: 'monospace',
+                resize: 'none',
+                marginBottom: '1.5rem',
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setViewingTemplate(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(emailTemplate)
+                  alert('✅ Template copied to clipboard!')
+                }}
+                disabled={!emailTemplate}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: emailTemplate ? '#10b981' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: emailTemplate ? 'pointer' : 'not-allowed',
+                }}
+              >
+                📋 Copy to Clipboard
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch('/api/program-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      program_name: editingProgram,
+                      email_template: emailTemplate || null,
+                    })
+                  })
+                  setViewingTemplate(false)
+                  alert('✅ Template saved!')
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#0070f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Save Template
               </button>
             </div>
           </div>
