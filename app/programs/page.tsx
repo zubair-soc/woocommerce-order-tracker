@@ -264,12 +264,18 @@ export default function ProgramsPage() {
       body: JSON.stringify({
         id: editingTemplateId,
         name: editTemplateName,
-        description: editTemplateDesc,
+        description: editTemplateDesc || null, // Fix: Allow empty description
         template_html: editTemplateHtml,
       })
     })
 
+    // Close modal and clear form
     setEditingTemplateId(null)
+    setEditTemplateName('')
+    setEditTemplateDesc('')
+    setEditTemplateHtml('')
+    
+    // Refresh template list
     fetchTemplates()
     alert('✅ Template saved!')
   }
@@ -1037,9 +1043,29 @@ export default function ProgramsPage() {
               flexDirection: 'column',
             }}
           >
-            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              {editingTemplateId ? 'Edit Template' : 'New Template'}
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
+                {editingTemplateId ? 'Edit Template' : 'New Template'}
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingTemplateId(null)
+                  setEditTemplateName('')
+                  setEditTemplateDesc('')
+                  setEditTemplateHtml('')
+                }}
+                style={{
+                  padding: '0.5rem',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
