@@ -30,10 +30,11 @@ export default function Home() {
   const fetchOrders = async () => {
     setLoading(true)
     
-    // Fetch orders
+    // Fetch orders - exclude drafts, pending, and failed orders
     const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
       .select('*')
+      .not('status', 'in', '("checkout-draft","pending","failed","cancelled")')
       .order('date_created', { ascending: false })
 
     if (ordersError) {
