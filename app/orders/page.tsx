@@ -92,7 +92,7 @@ export default function Home() {
     setLoading(false)
     
     // Fetch installment counts for all orders
-    if (ordersData.length > 0) {
+    if (ordersData && ordersData.length > 0) {
       const orderIds = ordersData.map(o => o.order_id)
       fetchInstallmentCounts(orderIds)
     }
