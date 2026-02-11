@@ -86,6 +86,13 @@ export async function POST(request: Request) {
         .single()
 
       if (error) throw error
+      
+      // Update orders table flag
+      await supabase
+        .from('orders')
+        .update({ has_installments: true })
+        .eq('order_id', order_id)
+      
       return NextResponse.json({ success: true, installment: data })
     }
   } catch (error: any) {
@@ -104,12 +111,36 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Installment ID required' }, { status: 400 })
     }
 
+    // First, get the order_id before deleting
+    const { data: installment } = await supabase
+      .from('order_installments')
+      .select('order_id')
+      .eq('id', id)
+      .single()
+
     const { error } = await supabase
       .from('order_installments')
       .delete()
       .eq('id', id)
 
     if (error) throw error
+
+    // Check if any installments remain for this order
+    if (installment) {
+      const { data: remaining } = await supabase
+        .from('order_installments')
+        .select('id')
+        .eq('order_id', installment.order_id)
+        .limit(1)
+
+      // If no installments left, set flag to false
+      if (!remaining || remaining.length === 0) {
+        await supabase
+          .from('orders')
+          .update({ has_installments: false })
+          .eq('order_id', installment.order_id)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
