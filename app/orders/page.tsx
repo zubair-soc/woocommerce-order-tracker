@@ -13,6 +13,7 @@ export default function Home() {
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState('')
   const [selectedCourses, setSelectedCourses] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -342,6 +343,11 @@ export default function Home() {
       filtered = filtered.filter((order) => order.status === statusFilter)
     }
 
+    // Payment type filter
+    if (paymentTypeFilter) {
+      filtered = filtered.filter((order) => order.payment_method_title === paymentTypeFilter)
+    }
+
     // Course multi-select filter (using normalized names)
     if (selectedCourses.length > 0) {
       filtered = filtered.filter((order) => {
@@ -364,7 +370,7 @@ export default function Home() {
 
     setFilteredOrders(filtered)
     setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, selectedCourses, dateFrom, dateTo, orders])
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders])
 
   // Get paginated orders
   const indexOfLastOrder = currentPage * ordersPerPage
@@ -501,6 +507,7 @@ export default function Home() {
 
   // Get unique statuses for filter dropdown
   const statuses = Array.from(new Set(orders.map((o) => o.status)))
+  const paymentTypes = Array.from(new Set(orders.map((o) => o.payment_method_title).filter(Boolean)))
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -604,6 +611,30 @@ export default function Home() {
               {statuses.map((status) => (
                 <option key={status} value={status}>
                   {status}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Payment Type Filter */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+              Payment Type
+            </label>
+            <select
+              value={paymentTypeFilter}
+              onChange={(e) => setPaymentTypeFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+              }}
+            >
+              <option value="">All Payment Types</option>
+              {paymentTypes.sort().map((type) => (
+                <option key={type} value={type}>
+                  {type}
                 </option>
               ))}
             </select>
