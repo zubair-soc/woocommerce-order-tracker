@@ -26,6 +26,19 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1)
   const ordersPerPage = 100
 
+  // Installments modal state
+  const [showInstallments, setShowInstallments] = useState(false)
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
+  const [selectedOrderNumber, setSelectedOrderNumber] = useState<string>('')
+  const [installments, setInstallments] = useState<any[]>([])
+  const [editingInstallment, setEditingInstallment] = useState<any | null>(null)
+  const [installmentNumber, setInstallmentNumber] = useState('')
+  const [amountDue, setAmountDue] = useState('')
+  const [amountPaid, setAmountPaid] = useState('0')
+  const [dueDate, setDueDate] = useState('')
+  const [paidDate, setPaidDate] = useState('')
+  const [installmentNotes, setInstallmentNotes] = useState('')
+
   // Fetch orders and products from Supabase
   const fetchOrders = async () => {
     setLoading(true)
@@ -76,6 +89,82 @@ export default function Home() {
     }
     
     setLoading(false)
+  }
+
+  // Installments Functions
+  const fetchInstallments = async (orderId: number) => {
+    const response = await fetch(`/api/order-installments?order_id=${orderId}`)
+    const data = await response.json()
+    setInstallments(data.installments || [])
+  }
+
+  const openInstallmentsModal = (order: any) => {
+    setSelectedOrderId(order.order_id)
+    setSelectedOrderNumber(order.order_number)
+    fetchInstallments(order.order_id)
+    setShowInstallments(true)
+  }
+
+  const saveInstallment = async () => {
+    if (!installmentNumber || !amountDue) {
+      alert('Installment number and amount due are required')
+      return
+    }
+
+    await fetch('/api/order-installments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editingInstallment?.id,
+        order_id: selectedOrderId,
+        installment_number: parseInt(installmentNumber),
+        amount_due: amountDue,
+        amount_paid: amountPaid,
+        due_date: dueDate || null,
+        paid_date: paidDate || null,
+        status: paidDate ? 'paid' : 'pending',
+        notes: installmentNotes
+      })
+    })
+
+    // Clear form
+    setEditingInstallment(null)
+    setInstallmentNumber('')
+    setAmountDue('')
+    setAmountPaid('0')
+    setDueDate('')
+    setPaidDate('')
+    setInstallmentNotes('')
+
+    // Refresh list
+    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    alert('✅ Installment saved!')
+  }
+
+  const markInstallmentPaid = async (installment: any) => {
+    const today = new Date().toISOString().split('T')[0]
+    
+    await fetch('/api/order-installments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...installment,
+        amount_paid: installment.amount_due,
+        paid_date: today,
+        status: 'paid'
+      })
+    })
+
+    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    alert('✅ Marked as paid!')
+  }
+
+  const deleteInstallment = async (id: number) => {
+    if (!confirm('Delete this installment?')) return
+    
+    await fetch(`/api/order-installments?id=${id}`, { method: 'DELETE' })
+    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    alert('✅ Installment deleted')
   }
 
   // Sync orders from WooCommerce
@@ -874,6 +963,7 @@ export default function Home() {
                   <th style={tableHeaderStyle}>Total</th>
                   <th style={tableHeaderStyle}>Status</th>
                   <th style={tableHeaderStyle}>Payment</th>
+                  <th style={tableHeaderStyle}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -932,6 +1022,22 @@ export default function Home() {
                       </span>
                     </td>
                     <td style={tableCellStyle}>{order.payment_method_title}</td>
+                    <td style={tableCellStyle}>
+                      <button
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        📋 Installments
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1033,6 +1139,378 @@ export default function Home() {
           >
             Next →
           </button>
+        </div>
+      )}
+
+      {/* Installments Modal */}
+      {showInstallments && selectedOrderId && (
+        <div
+          onClick={() => setShowInstallments(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              padding: '2rem',
+              borderRadius: '8px',
+              maxWidth: '800px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: '600', margin: 0 }}>
+                Installments: Order #{selectedOrderNumber}
+              </h2>
+              <button
+                onClick={() => setShowInstallments(false)}
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Summary */}
+            {installments.length > 0 && (
+              <div style={{
+                padding: '1rem',
+                backgroundColor: '#f0f9ff',
+                borderRadius: '6px',
+                marginBottom: '1.5rem',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                  <div>
+                    <strong>Total Due:</strong> ${installments.reduce((sum, i) => 
+                      sum + parseFloat(i.amount_due), 0).toFixed(2)}
+                  </div>
+                  <div>
+                    <strong>Total Paid:</strong> ${installments.reduce((sum, i) => 
+                      sum + parseFloat(i.amount_paid || '0'), 0).toFixed(2)}
+                  </div>
+                  <div style={{ color: '#ef4444' }}>
+                    <strong>Remaining:</strong> ${(installments.reduce((sum, i) => 
+                      sum + parseFloat(i.amount_due), 0) - 
+                      installments.reduce((sum, i) => 
+                      sum + parseFloat(i.amount_paid || '0'), 0)).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Add Installment Button */}
+            {!editingInstallment && !installmentNumber && (
+              <button
+                onClick={() => {
+                  setInstallmentNumber(String(installments.length + 1))
+                  setAmountDue('')
+                  setAmountPaid('0')
+                  setDueDate('')
+                  setPaidDate('')
+                  setInstallmentNotes('')
+                }}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  marginBottom: '1.5rem',
+                  fontWeight: '500',
+                }}
+              >
+                + Add Installment
+              </button>
+            )}
+
+            {/* Add/Edit Form */}
+            {(editingInstallment || installmentNumber) && (
+              <div style={{
+                padding: '1.5rem',
+                backgroundColor: '#f9fafb',
+                borderRadius: '6px',
+                marginBottom: '1.5rem',
+              }}>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '600' }}>
+                  {editingInstallment ? 'Edit Installment' : 'New Installment'}
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Installment # *
+                    </label>
+                    <input
+                      type="number"
+                      value={installmentNumber}
+                      onChange={(e) => setInstallmentNumber(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Amount Due *
+                    </label>
+                    <input
+                      type="text"
+                      value={amountDue}
+                      onChange={(e) => setAmountDue(e.target.value)}
+                      placeholder="200.00"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Amount Paid
+                    </label>
+                    <input
+                      type="text"
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(e.target.value)}
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Paid Date
+                    </label>
+                    <input
+                      type="date"
+                      value={paidDate}
+                      onChange={(e) => setPaidDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                      Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={installmentNotes}
+                      onChange={(e) => setInstallmentNotes(e.target.value)}
+                      placeholder="Second of 3 payments"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => {
+                      setEditingInstallment(null)
+                      setInstallmentNumber('')
+                      setAmountDue('')
+                      setAmountPaid('0')
+                      setDueDate('')
+                      setPaidDate('')
+                      setInstallmentNotes('')
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveInstallment}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#0070f3',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Installments List */}
+            {installments.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#6b7280', padding: '2rem' }}>
+                No installments yet. Click "Add Installment" to create one.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {installments.map((inst) => {
+                  const isPaid = inst.status === 'paid'
+                  const isOverdue = !isPaid && inst.due_date && new Date(inst.due_date) < new Date()
+                  
+                  return (
+                    <div
+                      key={inst.id}
+                      style={{
+                        padding: '1rem',
+                        border: `2px solid ${isPaid ? '#10b981' : isOverdue ? '#ef4444' : '#e5e7eb'}`,
+                        borderRadius: '6px',
+                        backgroundColor: isPaid ? '#f0fdf4' : isOverdue ? '#fef2f2' : '#fff',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                            Installment #{inst.installment_number}
+                            <span style={{
+                              marginLeft: '1rem',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: '0.875rem',
+                              backgroundColor: isPaid ? '#10b981' : isOverdue ? '#ef4444' : '#f59e0b',
+                              color: 'white',
+                            }}>
+                              {isPaid ? '✓ Paid' : isOverdue ? 'Overdue' : 'Pending'}
+                            </span>
+                          </div>
+                          <div style={{ color: '#6b7280', fontSize: '0.875rem' }}>
+                            <div>Amount Due: <strong>${inst.amount_due}</strong></div>
+                            <div>Amount Paid: <strong>${inst.amount_paid || '0'}</strong></div>
+                            {inst.due_date && (
+                              <div>Due: {new Date(inst.due_date).toLocaleDateString()}</div>
+                            )}
+                            {inst.paid_date && (
+                              <div>Paid: {new Date(inst.paid_date).toLocaleDateString()}</div>
+                            )}
+                            {inst.notes && (
+                              <div style={{ marginTop: '0.5rem' }}>Note: {inst.notes}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {!isPaid && (
+                            <button
+                              onClick={() => markInstallmentPaid(inst)}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                              }}
+                            >
+                              Mark Paid
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setEditingInstallment(inst)
+                              setInstallmentNumber(String(inst.installment_number))
+                              setAmountDue(inst.amount_due)
+                              setAmountPaid(inst.amount_paid || '0')
+                              setDueDate(inst.due_date || '')
+                              setPaidDate(inst.paid_date || '')
+                              setInstallmentNotes(inst.notes || '')
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteInstallment(inst.id)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              backgroundColor: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

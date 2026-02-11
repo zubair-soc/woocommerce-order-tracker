@@ -245,7 +245,8 @@ export default function ProgramsPage() {
       setEditTemplateDesc(template.description || '')
       setEditTemplateHtml(template.template_html)
     } else {
-      setEditingTemplateId(null)
+      // For new template, set a flag to show modal
+      setEditingTemplateId(0) // Use 0 to indicate "new template mode"
       setEditTemplateName('')
       setEditTemplateDesc('')
       setEditTemplateHtml('')
@@ -258,16 +259,26 @@ export default function ProgramsPage() {
       return
     }
 
-    await fetch('/api/email-templates', {
+    console.log('Saving template:', {
+      id: editingTemplateId,
+      name: editTemplateName,
+      description: editTemplateDesc,
+      descLength: editTemplateDesc?.length
+    })
+
+    const response = await fetch('/api/email-templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: editingTemplateId,
+        id: editingTemplateId && editingTemplateId !== 0 ? editingTemplateId : null, // Don't send 0 as id
         name: editTemplateName,
-        description: editTemplateDesc || null, // Fix: Allow empty description
+        description: editTemplateDesc || null,
         template_html: editTemplateHtml,
       })
     })
+
+    const result = await response.json()
+    console.log('Save result:', result)
 
     // Close modal and clear form
     setEditingTemplateId(null)
@@ -1014,7 +1025,7 @@ export default function ProgramsPage() {
       )}
 
       {/* Template Editor Modal */}
-      {editingTemplateId !== null || (editTemplateName || editTemplateHtml) ? (
+      {editingTemplateId !== null ? (
         <div
           onClick={() => setEditingTemplateId(null)}
           style={{
