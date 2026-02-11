@@ -1006,6 +1006,7 @@ export default function Home() {
                   <th style={tableHeaderStyle}>Total</th>
                   <th style={tableHeaderStyle}>Status</th>
                   <th style={tableHeaderStyle}>Payment</th>
+                  <th style={tableHeaderStyle}>Unpaid</th>
                   <th style={tableHeaderStyle}>Installments</th>
                 </tr>
               </thead>
@@ -1066,17 +1067,63 @@ export default function Home() {
                     </td>
                     <td style={tableCellStyle}>{order.payment_method_title}</td>
                     <td style={tableCellStyle}>
-                      <span
-                        onClick={() => openInstallmentsModal(order)}
-                        style={{
-                          color: '#3b82f6',
-                          fontSize: '0.813rem',
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
+                      <input
+                        type="checkbox"
+                        checked={order.payment_status === 'unpaid'}
+                        onChange={async (e) => {
+                          const newStatus = e.target.checked ? 'unpaid' : 'paid'
+                          
+                          // Update via API
+                          await fetch('/api/orders', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              order_id: order.order_id,
+                              payment_status: newStatus
+                            })
+                          })
+                          
+                          // Refresh orders
+                          fetchOrders()
                         }}
-                      >
-                        View
-                      </span>
+                        style={{
+                          cursor: 'pointer',
+                          width: '18px',
+                          height: '18px',
+                          accentColor: '#dc2626',
+                        }}
+                        title={order.payment_status === 'unpaid' ? 'Mark as paid' : 'Mark as unpaid'}
+                      />
+                    </td>
+                    <td style={tableCellStyle}>
+                      {order.has_installments ? (
+                        <span
+                          onClick={() => openInstallmentsModal(order)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.813rem',
+                            cursor: 'pointer',
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            fontWeight: '500',
+                          }}
+                        >
+                          💰 Plan
+                        </span>
+                      ) : (
+                        <span
+                          onClick={() => openInstallmentsModal(order)}
+                          style={{
+                            color: '#6b7280',
+                            fontSize: '0.813rem',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          + Add
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
