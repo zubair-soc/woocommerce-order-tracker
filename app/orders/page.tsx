@@ -31,6 +31,7 @@ export default function Home() {
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
   const [selectedOrderNumber, setSelectedOrderNumber] = useState<string>('')
   const [installments, setInstallments] = useState<any[]>([])
+  const [installmentCounts, setInstallmentCounts] = useState<{[orderId: number]: {total: number, paid: number, totalDue: number, totalPaid: number}}>({})
   const [editingInstallment, setEditingInstallment] = useState<any | null>(null)
   const [installmentNumber, setInstallmentNumber] = useState('')
   const [amountDue, setAmountDue] = useState('')
@@ -89,9 +90,41 @@ export default function Home() {
     }
     
     setLoading(false)
+    
+    // Fetch installment counts for all orders
+    if (ordersData.length > 0) {
+      const orderIds = ordersData.map(o => o.order_id)
+      fetchInstallmentCounts(orderIds)
+    }
   }
 
   // Installments Functions
+  const fetchInstallmentCounts = async (orderIds: number[]) => {
+    // Fetch installments for all orders
+    const counts: {[orderId: number]: {total: number, paid: number, totalDue: number, totalPaid: number}} = {}
+    
+    for (const orderId of orderIds) {
+      const response = await fetch(`/api/order-installments?order_id=${orderId}`)
+      const data = await response.json()
+      const installments = data.installments || []
+      
+      if (installments.length > 0) {
+        const paid = installments.filter((i: any) => i.status === 'paid').length
+        const totalDue = installments.reduce((sum: number, i: any) => sum + parseFloat(i.amount_due), 0)
+        const totalPaid = installments.reduce((sum: number, i: any) => sum + parseFloat(i.amount_paid || '0'), 0)
+        
+        counts[orderId] = {
+          total: installments.length,
+          paid,
+          totalDue,
+          totalPaid
+        }
+      }
+    }
+    
+    setInstallmentCounts(counts)
+  }
+
   const fetchInstallments = async (orderId: number) => {
     const response = await fetch(`/api/order-installments?order_id=${orderId}`)
     const data = await response.json()
@@ -137,7 +170,10 @@ export default function Home() {
     setInstallmentNotes('')
 
     // Refresh list
-    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    if (selectedOrderId) {
+      fetchInstallments(selectedOrderId)
+      fetchInstallmentCounts([selectedOrderId])
+    }
     alert('✅ Installment saved!')
   }
 
@@ -155,7 +191,10 @@ export default function Home() {
       })
     })
 
-    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    if (selectedOrderId) {
+      fetchInstallments(selectedOrderId)
+      fetchInstallmentCounts([selectedOrderId])
+    }
     alert('✅ Marked as paid!')
   }
 
@@ -163,7 +202,10 @@ export default function Home() {
     if (!confirm('Delete this installment?')) return
     
     await fetch(`/api/order-installments?id=${id}`, { method: 'DELETE' })
-    if (selectedOrderId) fetchInstallments(selectedOrderId)
+    if (selectedOrderId) {
+      fetchInstallments(selectedOrderId)
+      fetchInstallmentCounts([selectedOrderId])
+    }
     alert('✅ Installment deleted')
   }
 
@@ -963,7 +1005,7 @@ export default function Home() {
                   <th style={tableHeaderStyle}>Total</th>
                   <th style={tableHeaderStyle}>Status</th>
                   <th style={tableHeaderStyle}>Payment</th>
-                  <th style={tableHeaderStyle}>Actions</th>
+                  <th style={tableHeaderStyle}>Installments</th>
                 </tr>
               </thead>
               <tbody>
@@ -1023,20 +1065,47 @@ export default function Home() {
                     </td>
                     <td style={tableCellStyle}>{order.payment_method_title}</td>
                     <td style={tableCellStyle}>
-                      <button
-                        onClick={() => openInstallmentsModal(order)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          backgroundColor: '#3b82f6',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '0.875rem',
-                        }}
-                      >
-                        📋 Installments
-                      </button>
+                      {(() => {
+                        const count = installmentCounts[order.order_id]
+                        
+                        if (!count) {
+                          // No installments - show "+ Add" link
+                          return (
+                            <span
+                              onClick={() => openInstallmentsModal(order)}
+                              style={{
+                                color: '#6b7280',
+                                fontSize: '0.813rem',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                              }}
+                            >
+                              + Add
+                            </span>
+                          )
+                        }
+                        
+                        // Has installments - show progress badge
+                        const allPaid = count.paid === count.total
+                        const hasOverdue = count.totalPaid < count.totalDue && count.paid < count.total
+                        
+                        return (
+                          <span
+                            onClick={() => openInstallmentsModal(order)}
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: '0.813rem',
+                              cursor: 'pointer',
+                              backgroundColor: allPaid ? '#d1fae5' : hasOverdue ? '#fee2e2' : '#fef3c7',
+                              color: allPaid ? '#065f46' : hasOverdue ? '#991b1b' : '#92400e',
+                              fontWeight: '500',
+                            }}
+                          >
+                            {allPaid ? '✓' : hasOverdue ? '⚠️' : '💰'} ${count.totalPaid.toFixed(0)}/${count.totalDue.toFixed(0)}
+                          </span>
+                        )
+                      })()}
                     </td>
                   </tr>
                 ))}
