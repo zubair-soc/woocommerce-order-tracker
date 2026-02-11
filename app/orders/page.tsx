@@ -92,10 +92,11 @@ export default function Home() {
     setLoading(false)
     
     // Fetch installment counts for all orders
-    if (ordersData && ordersData.length > 0) {
-      const orderIds = ordersData.map(o => o.order_id)
-      fetchInstallmentCounts(orderIds)
-    }
+    // TEMPORARILY DISABLED - This was causing slowness
+    // if (ordersData && ordersData.length > 0) {
+    //   const orderIds = ordersData.map(o => o.order_id)
+    //   fetchInstallmentCounts(orderIds)
+    // }
   }
 
   // Installments Functions
@@ -1065,47 +1066,17 @@ export default function Home() {
                     </td>
                     <td style={tableCellStyle}>{order.payment_method_title}</td>
                     <td style={tableCellStyle}>
-                      {(() => {
-                        const count = installmentCounts[order.order_id]
-                        
-                        if (!count) {
-                          // No installments - show "+ Add" link
-                          return (
-                            <span
-                              onClick={() => openInstallmentsModal(order)}
-                              style={{
-                                color: '#6b7280',
-                                fontSize: '0.813rem',
-                                cursor: 'pointer',
-                                textDecoration: 'underline',
-                              }}
-                            >
-                              + Add
-                            </span>
-                          )
-                        }
-                        
-                        // Has installments - show progress badge
-                        const allPaid = count.paid === count.total
-                        const hasOverdue = count.totalPaid < count.totalDue && count.paid < count.total
-                        
-                        return (
-                          <span
-                            onClick={() => openInstallmentsModal(order)}
-                            style={{
-                              padding: '0.25rem 0.5rem',
-                              borderRadius: '4px',
-                              fontSize: '0.813rem',
-                              cursor: 'pointer',
-                              backgroundColor: allPaid ? '#d1fae5' : hasOverdue ? '#fee2e2' : '#fef3c7',
-                              color: allPaid ? '#065f46' : hasOverdue ? '#991b1b' : '#92400e',
-                              fontWeight: '500',
-                            }}
-                          >
-                            {allPaid ? '✓' : hasOverdue ? '⚠️' : '💰'} ${count.totalPaid.toFixed(0)}/${count.totalDue.toFixed(0)}
-                          </span>
-                        )
-                      })()}
+                      <span
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          color: '#3b82f6',
+                          fontSize: '0.813rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        View
+                      </span>
                     </td>
                   </tr>
                 ))}
