@@ -24,6 +24,8 @@ export interface Order {
   total: string
   payment_method: string
   payment_method_title: string
+  payment_status: string // 'paid' | 'unpaid'
+  has_installments: boolean
   products: any // JSON
   created_at: string
   updated_at: string
