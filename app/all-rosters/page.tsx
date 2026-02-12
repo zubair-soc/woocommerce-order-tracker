@@ -47,7 +47,8 @@ export default function AllRostersPage() {
   }
 
   // Format date without timezone conversion
-  const formatDate = (dateString: string): string => {
+  const formatDate = (dateString: string | null): string => {
+    if (!dateString) return 'No date set'
     const dateStr = dateString.split('T')[0]
     const [year, month, day] = dateStr.split('-')
     const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
