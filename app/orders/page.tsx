@@ -215,11 +215,16 @@ export default function Home() {
   const syncOrders = async () => {
     setSyncing(true)
     try {
-      const response = await fetch('/api/sync-orders')
+      const response = await fetch('/api/sync-orders', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      })
       const result = await response.json()
       
       if (result.success) {
-        alert(`Successfully synced ${result.count} orders!`)
+        alert(`Successfully synced ${result.orderCount} orders!`)
         fetchOrders()
       } else {
         alert('Failed to sync orders: ' + result.error)

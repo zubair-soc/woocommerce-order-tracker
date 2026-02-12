@@ -104,12 +104,21 @@ export async function GET() {
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Synced ${allOrders.length} orders and ${allProducts.length} products`,
-      orderCount: allOrders.length,
-      productCount: allProducts.length,
-    })
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Synced ${allOrders.length} orders and ${allProducts.length} products`,
+        orderCount: allOrders.length,
+        productCount: allProducts.length,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    )
   } catch (error: any) {
     console.error('Sync error:', error)
     return NextResponse.json(
