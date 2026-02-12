@@ -65,6 +65,9 @@ export async function GET() {
       payment_method: order.payment_method,
       payment_method_title: order.payment_method_title,
       products: order.line_items,
+      // Defaults for new orders (won't overwrite existing values on update)
+      payment_status: 'paid',
+      has_installments: false,
     }))
 
     // Transform and insert products
