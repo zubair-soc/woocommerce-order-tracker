@@ -46,6 +46,18 @@ export default function AllRostersPage() {
     return '#dc2626' // Red (21+ over)
   }
 
+  // Format date without timezone conversion
+  const formatDate = (dateString: string): string => {
+    const dateStr = dateString.split('T')[0]
+    const [year, month, day] = dateStr.split('-')
+    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+    return localDate.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    })
+  }
+
   // Group programs by type
   const groupPrograms = (rosters: ProgramRoster[]) => {
     const beginnerHockey: ProgramRoster[] = []
@@ -70,30 +82,34 @@ export default function AllRostersPage() {
     const fetchData = async () => {
       setLoading(true)
 
-      // Fetch all active program settings
-      const { data: programs, error: programsError } = await supabase
-        .from('program_settings')
-        .select('*')
-        .in('status', ['open_registration', 'in_progress'])
-        .order('start_date', { ascending: true })
+      // Fetch programs and registrations in PARALLEL (not sequential)
+      const [programsResult, registrationsResult] = await Promise.all([
+        supabase
+          .from('program_settings')
+          .select('*')
+          .in('status', ['open_registration', 'in_progress'])
+          .order('start_date', { ascending: true }),
+        
+        supabase
+          .from('program_registrations')
+          .select('*')
+          .eq('status', 'active')
+      ])
 
-      if (programsError) {
-        console.error('Error fetching programs:', programsError)
+      if (programsResult.error) {
+        console.error('Error fetching programs:', programsResult.error)
         setLoading(false)
         return
       }
 
-      // Fetch all active registrations
-      const { data: registrations, error: registrationsError } = await supabase
-        .from('program_registrations')
-        .select('*')
-        .eq('status', 'active')
-
-      if (registrationsError) {
-        console.error('Error fetching registrations:', registrationsError)
+      if (registrationsResult.error) {
+        console.error('Error fetching registrations:', registrationsResult.error)
         setLoading(false)
         return
       }
+
+      const programs = programsResult.data
+      const registrations = registrationsResult.data
 
       // Group registrations by program
       const rosterMap: { [key: string]: ProgramRoster } = {}
