@@ -226,11 +226,7 @@ export default function AllRostersPage() {
                     {roster.program_name}
                   </h3>
                   <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                    {new Date(roster.start_date).toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
+                    {formatDate(roster.start_date)}
                   </div>
                   <div
                     style={{
@@ -306,11 +302,7 @@ export default function AllRostersPage() {
                     {roster.program_name}
                   </h3>
                   <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                    {new Date(roster.start_date).toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
+                    {formatDate(roster.start_date)}
                   </div>
                   <div
                     style={{
