@@ -517,6 +517,22 @@ export default function ProgramsPage() {
         </button>
 
         <button
+          onClick={() => router.push('/all-rosters')}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#7c3aed',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            fontWeight: '500',
+          }}
+        >
+          📋 View All Rosters
+        </button>
+
+        <button
           onClick={openTemplateLibrary}
           style={{
             padding: '0.75rem 1.5rem',
