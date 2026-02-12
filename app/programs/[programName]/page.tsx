@@ -42,7 +42,6 @@ export default function ProgramRosterPage() {
   // Form state
   const [playerName, setPlayerName] = useState('')
   const [playerEmail, setPlayerEmail] = useState('')
-  const [playerPhone, setPlayerPhone] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('e-transfer')
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
@@ -50,7 +49,6 @@ export default function ProgramRosterPage() {
   // Edit form state (complete)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
-  const [editPhone, setEditPhone] = useState('')
   const [editPaymentMethod, setEditPaymentMethod] = useState('')
   const [editAmount, setEditAmount] = useState('')
   const [editNotes, setEditNotes] = useState('')
@@ -130,7 +128,7 @@ export default function ProgramRosterPage() {
         program_name: programName,
         player_name: playerName,
         player_email: playerEmail,
-        player_phone: playerPhone,
+        player_phone: '', // Empty - no phone collected
         order_id: null,
         source: 'manual',
         payment_method: paymentMethod,
@@ -145,7 +143,6 @@ export default function ProgramRosterPage() {
       // Reset form
       setPlayerName('')
       setPlayerEmail('')
-      setPlayerPhone('')
       setAmount('')
       setNotes('')
       setShowAddForm(false)
@@ -238,7 +235,6 @@ export default function ProgramRosterPage() {
     setEditingPlayer(reg)
     setEditName(reg.player_name)
     setEditEmail(reg.player_email || '')
-    setEditPhone(reg.player_phone || '')
     setEditPaymentMethod(reg.payment_method)
     setEditAmount(reg.amount)
     setEditNotes(reg.notes || '')
@@ -253,7 +249,6 @@ export default function ProgramRosterPage() {
     const updateData: any = {
       player_name: editName,
       player_email: editEmail,
-      player_phone: editPhone,
     }
 
     if (canEditPayment) {
@@ -296,7 +291,7 @@ export default function ProgramRosterPage() {
         program_name: targetProgram,
         player_name: movingPlayer.player_name,
         player_email: movingPlayer.player_email,
-        player_phone: movingPlayer.player_phone,
+        player_phone: '', // Don't copy phone
         order_id: movingPlayer.order_id,
         source: 'transfer',
         payment_method: movingPlayer.payment_method,
@@ -366,7 +361,7 @@ export default function ProgramRosterPage() {
         program_name: targetProgram,
         player_name: reg.player_name,
         player_email: reg.player_email,
-        player_phone: reg.player_phone,
+        player_phone: '', // Don't copy phone
         order_id: reg.order_id,
         source: 'transfer',
         payment_method: reg.payment_method,
@@ -406,11 +401,10 @@ export default function ProgramRosterPage() {
 
   const exportRoster = () => {
     const csv = [
-      ['Name', 'Email', 'Phone', 'Payment Method', 'Amount', 'Status', 'Source', 'Notes'].join(','),
+      ['Name', 'Email', 'Payment Method', 'Amount', 'Status', 'Source', 'Notes'].join(','),
       ...registrations.map(r => [
         r.player_name,
         r.player_email || '',
-        r.player_phone || '',
         r.payment_method,
         r.amount,
         r.status,
@@ -622,23 +616,6 @@ export default function ProgramRosterPage() {
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={playerPhone}
-                  onChange={(e) => setPlayerPhone(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
                   Payment Method *
                 </label>
                 <select
@@ -744,7 +721,6 @@ export default function ProgramRosterPage() {
                   <th style={tableHeaderStyle}>#</th>
                   <th style={tableHeaderStyle}>Name</th>
                   <th style={tableHeaderStyle}>Email</th>
-                  <th style={tableHeaderStyle}>Phone</th>
                   <th style={tableHeaderStyle}>Payment</th>
                   <th style={tableHeaderStyle}>Amount</th>
                   <th style={tableHeaderStyle}>Unpaid</th>
@@ -763,7 +739,6 @@ export default function ProgramRosterPage() {
                     <td style={tableCellStyle}>{index + 1}</td>
                     <td style={tableCellStyle}>{reg.player_name}</td>
                     <td style={tableCellStyle}>{reg.player_email || '-'}</td>
-                    <td style={tableCellStyle}>{reg.player_phone || '-'}</td>
                     <td style={tableCellStyle}>
                       {reg.source === 'transfer' && reg.order_id ? (
                         <span>Transfer (Order #{reg.order_id})</span>
@@ -950,23 +925,6 @@ export default function ProgramRosterPage() {
                 type="email"
                 value={editEmail}
                 onChange={(e) => setEditEmail(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Phone
-              </label>
-              <input
-                type="tel"
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '0.5rem',
