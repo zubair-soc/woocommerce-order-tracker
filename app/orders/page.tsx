@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase'
 
 type Order = {
   id: number
@@ -25,6 +25,8 @@ export default function OrdersPage() {
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [paymentFilter, setPaymentFilter] = useState<string>('all')
   const [programFilter, setProgramFilter] = useState<string>('active')
+  
+  const supabase = createClient()
 
   useEffect(() => {
     fetchOrders()

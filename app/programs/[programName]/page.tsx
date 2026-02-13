@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase'
 
 type Registration = {
   id: number
@@ -31,6 +31,8 @@ export default function ProgramRosterPage() {
   const [settings, setSettings] = useState<ProgramSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [showRemoved, setShowRemoved] = useState(false)
+  
+  const supabase = createClient()
 
   useEffect(() => {
     fetchData()
