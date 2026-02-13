@@ -1,1315 +1,385 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
-interface Registration {
+type Registration = {
   id: number
   program_name: string
   player_name: string
   player_email: string
-  player_phone: string
-  order_id: number | null
-  source: string
-  payment_method: string
-  amount: string
+  order_id: string | null
+  amount_paid: string
   status: string
-  payment_status: string
-  notes: string
-  created_at: string
+  payment_status?: string
+}
+
+type ProgramSettings = {
+  program_name: string
+  start_date: string | null
+  notes: string | null
 }
 
 export default function ProgramRosterPage() {
   const params = useParams()
+  const router = useRouter()
   const programName = decodeURIComponent(params.programName as string)
   
   const [registrations, setRegistrations] = useState<Registration[]>([])
-  const [allPrograms, setAllPrograms] = useState<string[]>([])
-  const [products, setProducts] = useState<any[]>([])
+  const [settings, setSettings] = useState<ProgramSettings | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
   const [showRemoved, setShowRemoved] = useState(false)
-  const [showAllProgramsInMove, setShowAllProgramsInMove] = useState(false)
-  const [editingPlayer, setEditingPlayer] = useState<Registration | null>(null)
-  const [movingPlayer, setMovingPlayer] = useState<Registration | null>(null)
-  const [removingPlayer, setRemovingPlayer] = useState<Registration | null>(null)
-  const [removeNote, setRemoveNote] = useState('')
-  const [transferNote, setTransferNote] = useState('')
-  const [programInfo, setProgramInfo] = useState<{start_date?: string, notes?: string} | null>(null)
   
-  // Form state
-  const [playerName, setPlayerName] = useState('')
-  const [playerEmail, setPlayerEmail] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('e-transfer')
-  const [amount, setAmount] = useState('')
-  const [notes, setNotes] = useState('')
-  
-  // Edit form state (complete)
-  const [editName, setEditName] = useState('')
-  const [editEmail, setEditEmail] = useState('')
-  const [editPaymentMethod, setEditPaymentMethod] = useState('')
-  const [editAmount, setEditAmount] = useState('')
-  const [editNotes, setEditNotes] = useState('')
+  const supabase = createClient()
 
+  useEffect(() => {
+    fetchData()
+  }, [programName])
 
-  const fetchRegistrations = async () => {
+  async function fetchData() {
     setLoading(true)
     
-    // Fetch program settings (start date, notes)
-    const programSettingsResponse = await fetch('/api/program-settings')
-    const programSettingsData = await programSettingsResponse.json()
-    if (programSettingsData.settings) {
-      const setting = programSettingsData.settings.find((s: any) => s.program_name === programName)
-      if (setting) {
-        setProgramInfo({
-          start_date: setting.start_date,
-          notes: setting.notes
-        })
-      }
-    }
-    
-    // Fetch products for active filtering
-    const { data: productsData, error: productsError } = await supabase
-      .from('products')
-      .select('*')
-
-    if (!productsError) {
-      setProducts(productsData || [])
-    }
-    
-    // Helper to check if program is merchandise
-    const isMerchandise = (programName: string): boolean => {
-      const programLower = programName.toLowerCase()
-      return !(
-        programLower.includes('beginner hockey') ||
-        programLower.includes('pre-beginner') ||
-        programLower.includes('powerskating') ||
-        programLower.includes('power skating') ||
-        programLower.includes('shooting & puck handling') ||
-        programLower.includes('shooting and puck handling') ||
-        programLower.includes('goalie camp')
-      )
-    }
-    
-    // Fetch all unique program names for move dropdown
-    const { data: allRegs, error: allRegsError } = await supabase
-      .from('program_registrations')
-      .select('program_name')
-
-    if (!allRegsError) {
-      const uniquePrograms = Array.from(new Set(allRegs?.map(r => r.program_name) || []))
-        .filter(p => p !== programName && !isMerchandise(p)) // Exclude current program and merchandise
-        .sort()
-      setAllPrograms(uniquePrograms)
-    }
-    
-    const { data, error } = await supabase
+    // Fetch registrations
+    const { data: regData } = await supabase
       .from('program_registrations')
       .select('*')
       .eq('program_name', programName)
-      .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error('Error fetching registrations:', error)
-    } else {
-      setRegistrations(data || [])
-    }
+      .order('player_name', { ascending: true })
+    
+    // Fetch program settings
+    const { data: settingsData } = await supabase
+      .from('program_settings')
+      .select('*')
+      .eq('program_name', programName)
+      .single()
+    
+    setRegistrations(regData || [])
+    setSettings(settingsData)
     setLoading(false)
   }
 
-  const addPlayer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    const { error } = await supabase
-      .from('program_registrations')
-      .insert({
-        program_name: programName,
-        player_name: playerName,
-        player_email: playerEmail,
-        player_phone: '', // Empty - no phone collected
-        order_id: null,
-        source: 'manual',
-        payment_method: paymentMethod,
-        amount: amount,
-        status: 'active',
-        notes: notes,
-      })
-
-    if (error) {
-      alert('Error adding player: ' + error.message)
-    } else {
-      // Reset form
-      setPlayerName('')
-      setPlayerEmail('')
-      setAmount('')
-      setNotes('')
-      setShowAddForm(false)
-      fetchRegistrations()
-    }
+  async function copyEmails() {
+    const activeRegs = registrations.filter(r => r.status === 'active')
+    const emails = activeRegs.map(r => r.player_email).join(', ')
+    await navigator.clipboard.writeText(emails)
+    alert(`Copied ${activeRegs.length} emails to clipboard`)
   }
 
-  const removeRegistration = async (id: number, playerName: string) => {
-    const reg = registrations.find(r => r.id === id)
-    if (!reg) return
-    setRemovingPlayer(reg)
-    setRemoveNote('')
+  async function exportRoster() {
+    alert('Export feature coming soon')
   }
 
-  const confirmRemove = async () => {
-    if (!removingPlayer) return
+  const activeRegistrations = registrations.filter(r => r.status === 'active')
+  const removedRegistrations = registrations.filter(r => r.status === 'removed')
+  const displayedRegistrations = showRemoved ? removedRegistrations : activeRegistrations
 
-    const updateData: any = { status: 'removed' }
-    if (removeNote.trim()) {
-      updateData.notes = removingPlayer.notes 
-        ? `${removingPlayer.notes}\n[Removed: ${removeNote}]`
-        : `[Removed: ${removeNote}]`
-    }
-
-    const { error } = await supabase
-      .from('program_registrations')
-      .update(updateData)
-      .eq('id', removingPlayer.id)
-
-    if (error) {
-      alert('Error removing player: ' + error.message)
-    } else {
-      setRemovingPlayer(null)
-      setRemoveNote('')
-      fetchRegistrations()
-    }
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'No date set'
+    const [year, month, day] = dateStr.split('-')
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
-
-  const restoreRegistration = async (id: number, playerName: string) => {
-    // Get the registration being restored
-    const reg = registrations.find(r => r.id === id)
-    if (!reg) return
-
-    // If this was transferred_out, we need to remove from the target program
-    if (reg.status === 'transferred_out') {
-      // Parse the target program from notes (format: "Transferred from X on date")
-      // We need to find the corresponding registration in the new program
-      
-      // Find all registrations for this player (same name, email, order_id)
-      const { data: relatedRegs, error: findError } = await supabase
-        .from('program_registrations')
-        .select('*')
-        .eq('player_name', reg.player_name)
-        .eq('source', 'transfer')
-        .eq('status', 'active')
-      
-      if (!findError && relatedRegs && relatedRegs.length > 0) {
-        // Find the one that was created after this one (the transferred-to registration)
-        const transferredReg = relatedRegs.find(r => 
-          r.order_id === reg.order_id && 
-          r.program_name !== reg.program_name &&
-          new Date(r.created_at) > new Date(reg.created_at)
-        )
-        
-        if (transferredReg) {
-          // Delete from target program (not just mark removed)
-          await supabase
-            .from('program_registrations')
-            .delete()
-            .eq('id', transferredReg.id)
-        }
-      }
-    }
-
-    // Restore this registration
-    const { error } = await supabase
-      .from('program_registrations')
-      .update({ status: 'active' })
-      .eq('id', id)
-
-    if (error) {
-      alert('Error restoring player: ' + error.message)
-    } else {
-      alert(`✓ ${playerName} restored!`)
-      fetchRegistrations()
-    }
-  }
-
-  const startEdit = (reg: Registration) => {
-    setEditingPlayer(reg)
-    setEditName(reg.player_name)
-    setEditEmail(reg.player_email || '')
-    setEditPaymentMethod(reg.payment_method)
-    setEditAmount(reg.amount)
-    setEditNotes(reg.notes || '')
-  }
-
-  const saveEdit = async () => {
-    if (!editingPlayer) return
-
-    // Only update payment/amount/notes for manual entries
-    const canEditPayment = editingPlayer.source === 'manual'
-
-    const updateData: any = {
-      player_name: editName,
-      player_email: editEmail,
-    }
-
-    if (canEditPayment) {
-      updateData.payment_method = editPaymentMethod
-      updateData.amount = editAmount
-      updateData.notes = editNotes
-    }
-
-    const { error } = await supabase
-      .from('program_registrations')
-      .update(updateData)
-      .eq('id', editingPlayer.id)
-
-    if (error) {
-      alert('Error updating player: ' + error.message)
-    } else {
-      setEditingPlayer(null)
-      fetchRegistrations()
-    }
-  }
-
-  const startMove = (reg: Registration) => {
-    if (allPrograms.length === 0) {
-      alert('No other programs available to move to.')
-      return
-    }
-    setMovingPlayer(reg)
-  }
-
-  const confirmMove = async (targetProgram: string) => {
-    if (!movingPlayer) return
-
-    const noteText = transferNote.trim() 
-      ? `Transferred from "${programName}" on ${new Date().toLocaleDateString()}. Note: ${transferNote}`
-      : `Transferred from "${programName}" on ${new Date().toLocaleDateString()}`
-
-    const { error: insertError } = await supabase
-      .from('program_registrations')
-      .insert({
-        program_name: targetProgram,
-        player_name: movingPlayer.player_name,
-        player_email: movingPlayer.player_email,
-        player_phone: '', // Don't copy phone
-        order_id: movingPlayer.order_id,
-        source: 'transfer',
-        payment_method: movingPlayer.payment_method,
-        amount: movingPlayer.amount,
-        status: 'active',
-        notes: noteText,
-      })
-
-    if (insertError) {
-      alert('Error moving player: ' + insertError.message)
-      return
-    }
-
-    const { error: updateError } = await supabase
-      .from('program_registrations')
-      .update({ status: 'transferred_out' })
-      .eq('id', movingPlayer.id)
-
-    if (updateError) {
-      alert('Error updating old registration: ' + updateError.message)
-    } else {
-      alert(`✓ ${movingPlayer.player_name} successfully moved to ${targetProgram}`)
-      setMovingPlayer(null)
-      setTransferNote('')
-      fetchRegistrations()
-    }
-  }
-
-  const moveRegistration = async (id: number, playerName: string, currentProgram: string) => {
-    if (allPrograms.length === 0) {
-      alert('No other programs available to move to.')
-      return
-    }
-
-    // Create numbered list for easier selection
-    const programList = allPrograms.map((p, i) => `${i + 1}. ${p}`).join('\n')
-    const selection = prompt(
-      `Move ${playerName} to which program?\n\n${programList}\n\nEnter the NUMBER or full program name:`
-    )
-    
-    if (!selection) return
-    
-    // Check if user entered a number
-    const selectionNum = parseInt(selection)
-    let targetProgram: string
-    
-    if (!isNaN(selectionNum) && selectionNum >= 1 && selectionNum <= allPrograms.length) {
-      targetProgram = allPrograms[selectionNum - 1]
-    } else {
-      // User typed program name
-      targetProgram = selection
-      if (!allPrograms.includes(targetProgram)) {
-        alert('Invalid selection. Please enter a number (1-' + allPrograms.length + ') or exact program name.')
-        return
-      }
-    }
-
-    if (!confirm(`Move ${playerName} from:\n"${currentProgram}"\n\nTo:\n"${targetProgram}"\n\nConfirm?`)) return
-
-    // Get the registration details
-    const reg = registrations.find(r => r.id === id)
-    if (!reg) return
-
-    const { error: insertError } = await supabase
-      .from('program_registrations')
-      .insert({
-        program_name: targetProgram,
-        player_name: reg.player_name,
-        player_email: reg.player_email,
-        player_phone: '', // Don't copy phone
-        order_id: reg.order_id,
-        source: 'transfer',
-        payment_method: reg.payment_method,
-        amount: reg.amount,
-        status: 'active',
-        notes: `Transferred from "${currentProgram}" on ${new Date().toLocaleDateString()}`,
-      })
-
-    if (insertError) {
-      alert('Error moving player: ' + insertError.message)
-      return
-    }
-
-    // Mark old registration as transferred_out
-    const { error: updateError } = await supabase
-      .from('program_registrations')
-      .update({ status: 'transferred_out' })
-      .eq('id', id)
-
-    if (updateError) {
-      alert('Error updating old registration: ' + updateError.message)
-    } else {
-      alert(`✓ ${playerName} successfully moved to:\n${targetProgram}`)
-      fetchRegistrations()
-    }
-  }
-
-  const copyEmails = () => {
-    const emails = registrations
-      .filter(r => r.status === 'active' && r.player_email)
-      .map(r => r.player_email)
-      .join(', ')
-
-    navigator.clipboard.writeText(emails)
-    alert(`✓ ${emails.split(', ').length} emails copied to clipboard!`)
-  }
-
-  const exportRoster = () => {
-    const csv = [
-      ['Name', 'Email', 'Payment Method', 'Amount', 'Status', 'Source', 'Notes'].join(','),
-      ...registrations.map(r => [
-        r.player_name,
-        r.player_email || '',
-        r.payment_method,
-        r.amount,
-        r.status,
-        r.source,
-        r.notes || '',
-      ].join(','))
-    ].join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${programName.replace(/[^a-z0-9]/gi, '_')}_roster.csv`
-    a.click()
-  }
-
-  useEffect(() => {
-    fetchRegistrations()
-  }, [programName])
-
-  const activeCount = registrations.filter(r => r.status === 'active').length
-  const removedCount = registrations.filter(r => r.status === 'removed' || r.status === 'transferred_out').length
-  
-  // Filter registrations based on showRemoved toggle, then sort by order #
-  const displayedRegistrations = (showRemoved 
-    ? registrations 
-    : registrations.filter(r => r.status === 'active')
-  ).sort((a, b) => {
-    // Sort by order_id (nulls last)
-    if (a.order_id === null && b.order_id === null) return 0
-    if (a.order_id === null) return 1
-    if (b.order_id === null) return -1
-    return a.order_id - b.order_id
-  })
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <Link
-          href="/programs"
-          style={{
-            color: '#0070f3',
-            textDecoration: 'none',
-            fontSize: '0.9rem',
-            marginBottom: '0.5rem',
-            display: 'inline-block',
-          }}
-        >
-          ← Back to Programs
-        </Link>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-          {programName}
-        </h1>
-        <p style={{ color: '#666' }}>
-          {activeCount} active registrant{activeCount !== 1 ? 's' : ''} 
-          {registrations.length !== activeCount && ` (${registrations.length} total)`}
-        </p>
-      </div>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: 'auto', fontFamily: 'sans-serif' }}>
+      <Link href="/programs" style={{ color: '#007bff', textDecoration: 'none', fontSize: '14px' }}>
+        ← Back to Programs
+      </Link>
 
-      {/* Program Info Banner */}
-      {(programInfo?.start_date || programInfo?.notes) && (
+      <h1 style={{ marginTop: '20px', marginBottom: '10px' }}>{programName}</h1>
+      <p style={{ color: '#666', marginBottom: '20px' }}>
+        {activeRegistrations.length} active registrants ({registrations.length} total)
+      </p>
+
+      {/* Start Date Banner */}
+      {settings?.start_date && (
         <div style={{
-          marginBottom: '2rem',
-          padding: '1rem 1.5rem',
-          backgroundColor: '#f0f9ff',
-          borderRadius: '8px',
-          border: '1px solid #bfdbfe',
+          background: '#f0f7ff',
+          padding: '15px',
+          borderRadius: '5px',
+          border: '1px solid #cce5ff',
+          marginBottom: '20px'
         }}>
-          {programInfo.start_date && (
-            <div style={{ marginBottom: programInfo.notes ? '0.5rem' : 0 }}>
-              <strong>📅 Starts:</strong> {(() => {
-                const dateStr = programInfo.start_date.split('T')[0]
-                const [year, month, day] = dateStr.split('-')
-                const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-                return localDate.toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric', 
-                  year: 'numeric' 
-                })
-              })()}
-            </div>
-          )}
-          {programInfo.notes && (
-            <div style={{ whiteSpace: 'pre-wrap' }}>
-              <strong>📝 Notes:</strong> {programInfo.notes}
-            </div>
-          )}
+          📅 <strong>Starts:</strong> {formatDate(settings.start_date)}
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: '#0070f3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '1rem',
-            cursor: 'pointer',
-            fontWeight: '500',
-          }}
-        >
-          {showAddForm ? '✕ Cancel' : '+ Add Player'}
-        </button>
+      {/* Notes Banner */}
+      {settings?.notes && (
+        <div style={{
+          background: '#fff3cd',
+          padding: '15px',
+          borderRadius: '5px',
+          border: '1px solid #ffeaa7',
+          marginBottom: '20px'
+        }}>
+          📝 <strong>Notes:</strong> {settings.notes}
+        </div>
+      )}
 
-        <button
-          onClick={copyEmails}
-          disabled={activeCount === 0}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: activeCount === 0 ? '#ccc' : '#10b981',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '1rem',
-            cursor: activeCount === 0 ? 'not-allowed' : 'pointer',
-            fontWeight: '500',
-          }}
-        >
-          Copy Emails
-        </button>
-
-        <button
-          onClick={exportRoster}
-          disabled={registrations.length === 0}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: registrations.length === 0 ? '#ccc' : '#6b7280',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '1rem',
-            cursor: registrations.length === 0 ? 'not-allowed' : 'pointer',
-            fontWeight: '500',
-          }}
-        >
-          Export Roster
-        </button>
-
-        {removedCount > 0 && (
-          <button
+      {/* Action Buttons - Desktop */}
+      <div className="top-actions">
+        <button className="btn main-btn blue">+ Add Player</button>
+        <button className="btn main-btn green" onClick={copyEmails}>Copy Emails</button>
+        <button className="btn main-btn grey" onClick={exportRoster}>Export Roster</button>
+        {removedRegistrations.length > 0 && (
+          <button 
+            className="btn main-btn orange" 
             onClick={() => setShowRemoved(!showRemoved)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: showRemoved ? '#ef4444' : '#f59e0b',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '1rem',
-              cursor: 'pointer',
-              fontWeight: '500',
-            }}
           >
-            {showRemoved ? `Hide Removed (${removedCount})` : `Show Removed (${removedCount})`}
+            {showRemoved ? 'Show Active' : `Show Removed (${removedRegistrations.length})`}
           </button>
         )}
       </div>
 
-      {/* Add Player Form */}
-      {showAddForm && (
-        <div style={{
-          backgroundColor: 'white',
-          padding: '1.5rem',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        }}>
-          <h3 style={{ marginBottom: '1rem', fontWeight: '600' }}>Add Player Manually</h3>
-          <form onSubmit={addPlayer}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={playerEmail}
-                  onChange={(e) => setPlayerEmail(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Payment Method *
-                </label>
-                <select
-                  required
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                >
-                  <option value="e-transfer">E-transfer</option>
-                  <option value="credit-card">Credit Card</option>
-                  <option value="cash">Cash</option>
-                  <option value="comp">Comp/Free</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Amount
-                </label>
-                <input
-                  type="text"
-                  placeholder="$250"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Notes
-                </label>
-                <input
-                  type="text"
-                  placeholder="Optional"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              style={{
-                padding: '0.75rem 1.5rem',
-                backgroundColor: '#0070f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '1rem',
-                cursor: 'pointer',
-                fontWeight: '500',
-              }}
-            >
-              Add to Roster
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* Roster Table */}
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          padding: '1rem 1.5rem',
-          borderBottom: '1px solid #eee',
-        }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Roster</h2>
-        </div>
-
-        {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center' }}>Loading roster...</div>
-        ) : registrations.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: '#666' }}>
-            No registrations yet. Add players manually or sync from orders.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ backgroundColor: '#f9f9f9' }}>
-                <tr>
-                  <th style={tableHeaderStyle}>#</th>
-                  <th style={tableHeaderStyle}>Name</th>
-                  <th style={tableHeaderStyle}>Email</th>
-                  <th style={tableHeaderStyle}>Payment</th>
-                  <th style={tableHeaderStyle}>Amount</th>
-                  <th style={tableHeaderStyle}>Unpaid</th>
-                  <th style={tableHeaderStyle}>Source</th>
-                  <th style={tableHeaderStyle}>Status</th>
-                  <th style={tableHeaderStyle}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRegistrations.map((reg, index) => (
-                  <tr key={reg.id} style={{ 
-                    borderBottom: '1px solid #eee',
-                    opacity: reg.status === 'active' ? 1 : 0.6,
-                    backgroundColor: reg.status === 'active' ? 'white' : '#f9fafb'
-                  }}>
-                    <td style={tableCellStyle}>{index + 1}</td>
-                    <td style={tableCellStyle}>{reg.player_name}</td>
-                    <td style={tableCellStyle}>{reg.player_email || '-'}</td>
-                    <td style={tableCellStyle}>
-                      {reg.source === 'transfer' && reg.order_id ? (
-                        <span>Transfer (Order #{reg.order_id})</span>
-                      ) : reg.source === 'order' ? (
-                        <span>Order #{reg.order_id}</span>
-                      ) : (
-                        <span style={{ textTransform: 'capitalize' }}>{reg.payment_method}</span>
-                      )}
-                    </td>
-                    <td style={tableCellStyle}>${reg.amount}</td>
-                    <td style={tableCellStyle}>
-                      <input
-                        type="checkbox"
-                        checked={reg.payment_status === 'unpaid'}
-                        onChange={async (e) => {
-                          const newStatus = e.target.checked ? 'unpaid' : 'paid'
-                          const { error } = await supabase
-                            .from('program_registrations')
-                            .update({ payment_status: newStatus })
-                            .eq('id', reg.id)
-                          
-                          if (!error) {
-                            fetchRegistrations()
-                          }
-                        }}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer',
-                          accentColor: '#dc2626', // Red checkbox
-                        }}
-                        title={reg.payment_status === 'unpaid' ? 'Click to mark as paid' : 'Click to mark as unpaid'}
-                      />
-                    </td>
-                    <td style={tableCellStyle}>
-                      <span style={{
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem',
-                        backgroundColor: reg.source === 'order' ? '#dbeafe' : '#fef3c7',
-                        color: reg.source === 'order' ? '#1e40af' : '#92400e',
-                      }}>
-                        {reg.source}
-                      </span>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <span style={{
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem',
-                        backgroundColor: reg.status === 'active' ? '#d4edda' : '#f8d7da',
-                        color: reg.status === 'active' ? '#155724' : '#721c24',
-                      }}>
-                        {reg.status}
-                      </span>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        {reg.status === 'active' && (
-                          <>
-                            <button
-                              onClick={() => startEdit(reg)}
-                              style={{
-                                padding: '0.25rem 0.75rem',
-                                backgroundColor: '#8b5cf6',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '0.875rem',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => startMove(reg)}
-                              style={{
-                                padding: '0.25rem 0.75rem',
-                                backgroundColor: '#0070f3',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '0.875rem',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Move
-                            </button>
-                            <button
-                              onClick={() => removeRegistration(reg.id, reg.player_name)}
-                              style={{
-                                padding: '0.25rem 0.75rem',
-                                backgroundColor: '#dc2626',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '0.875rem',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Remove
-                            </button>
-                          </>
-                        )}
-                        {(reg.status === 'removed' || reg.status === 'transferred_out') && (
-                          <button
-                            onClick={() => restoreRegistration(reg.id, reg.player_name)}
-                            style={{
-                              padding: '0.25rem 0.75rem',
-                              backgroundColor: '#10b981',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: '0.875rem',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Restore
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Action Buttons - Mobile Grid */}
+      <div className="mobile-btn-grid mobile-only">
+        <button className="btn main-btn blue">+ Add</button>
+        <button className="btn main-btn green" onClick={copyEmails}>Emails</button>
+        <button className="btn main-btn grey" onClick={exportRoster}>Export</button>
+        {removedRegistrations.length > 0 && (
+          <button 
+            className="btn main-btn orange" 
+            onClick={() => setShowRemoved(!showRemoved)}
+          >
+            {showRemoved ? 'Active' : `Removed (${removedRegistrations.length})`}
+          </button>
         )}
       </div>
 
-      {/* Edit Player Modal */}
-      {editingPlayer && (
-        <div 
-          onClick={() => setEditingPlayer(null)}
-          style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '8px',
-            maxWidth: '600px',
-            width: '90%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-          }}>
-            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              {editingPlayer.source === 'manual' ? 'Edit Player' : 'View Player Details'}
-            </h3>
-            
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Name *
-              </label>
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                }}
-              />
+      {/* Desktop Table */}
+      <table className="desktop-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Payment</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {displayedRegistrations.map((reg, index) => (
+            <tr key={reg.id}>
+              <td>{index + 1}</td>
+              <td><strong>{reg.player_name}</strong></td>
+              <td style={{ fontSize: '13px' }}>{reg.player_email}</td>
+              <td>{reg.order_id ? `Order #${reg.order_id}` : 'Manual Add'}</td>
+              <td style={{ fontWeight: 'bold', color: '#28a745' }}>{reg.amount_paid}</td>
+              <td>
+                <span className={`status-${reg.status}`}>
+                  {reg.status}
+                </span>
+              </td>
+              <td>
+                <button className="btn btn-edit">Edit</button>
+                <button className="btn btn-move">Move</button>
+                <button className="btn btn-remove">Remove</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Mobile Cards */}
+      <div className="mobile-only">
+        {displayedRegistrations.map((reg, index) => (
+          <div key={reg.id} className="card">
+            <div className="card-row">
+              <strong>{index + 1}. {reg.player_name}</strong>
+              <span className={`status-${reg.status}`}>{reg.status}</span>
             </div>
-
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                }}
-              />
+            <div className="card-row">
+              <span className="label">Email:</span>
+              <span style={{ fontSize: '0.9em' }}>{reg.player_email}</span>
             </div>
-
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Payment Method
-              </label>
-              {editingPlayer.source === 'manual' ? (
-                <select
-                  value={editPaymentMethod}
-                  onChange={(e) => setEditPaymentMethod(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                  }}
-                >
-                  <option value="e-transfer">E-transfer</option>
-                  <option value="credit-card">Credit Card</option>
-                  <option value="cash">Cash</option>
-                  <option value="comp">Comp/Free</option>
-                  <option value="other">Other</option>
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={editingPlayer.source === 'order' ? `Order #${editingPlayer.order_id}` : 
-                         editingPlayer.source === 'transfer' ? `Transfer (Order #${editingPlayer.order_id})` :
-                         editPaymentMethod}
-                  disabled
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    backgroundColor: '#f3f4f6',
-                    color: '#666',
-                  }}
-                />
-              )}
+            <div className="card-row">
+              <span className="label">Payment:</span>
+              <span>{reg.order_id ? `Order #${reg.order_id}` : 'Manual'}</span>
             </div>
-
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Amount
-              </label>
-              <input
-                type="text"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                disabled={editingPlayer.source !== 'manual'}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: editingPlayer.source === 'manual' ? 'white' : '#f3f4f6',
-                  color: editingPlayer.source === 'manual' ? 'inherit' : '#666',
-                }}
-              />
+            <div className="card-row">
+              <span className="label">Amount:</span>
+              <span style={{ fontWeight: 'bold', color: '#28a745' }}>{reg.amount_paid}</span>
             </div>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Notes
-              </label>
-              <textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                disabled={editingPlayer.source !== 'manual'}
-                rows={4}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  backgroundColor: editingPlayer.source === 'manual' ? 'white' : '#f3f4f6',
-                  color: editingPlayer.source === 'manual' ? 'inherit' : '#666',
-                }}
-                placeholder={editingPlayer.source === 'manual' ? 'Add notes...' : ''}
-              />
-            </div>
-
-            {editingPlayer.source !== 'manual' && (
-              <div style={{ 
-                marginBottom: '1.5rem',
-                padding: '0.75rem',
-                backgroundColor: '#fef3c7',
-                borderRadius: '4px',
-                fontSize: '0.875rem',
-              }}>
-                ℹ️ Payment details are read-only for {editingPlayer.source === 'order' ? 'WooCommerce orders' : 'transferred players'}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setEditingPlayer(null)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                {editingPlayer.source === 'manual' ? 'Cancel' : 'Close'}
-              </button>
-              {editingPlayer.source === 'manual' && (
-                <button
-                  onClick={saveEdit}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#0070f3',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Save Changes
-                </button>
-              )}
+            <div className="card-actions">
+              <button className="btn btn-edit">Edit</button>
+              <button className="btn btn-move">Move</button>
+              <button className="btn btn-remove">Remove</button>
             </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* Move Player Modal */}
-      {movingPlayer && (
-        <div 
-          onClick={() => setMovingPlayer(null)}
-          style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '8px',
-            maxWidth: '600px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto',
-          }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              Move {movingPlayer.player_name}
-            </h3>
-            <p style={{ marginBottom: '1rem', color: '#666' }}>
-              Select the program to move this player to:
-            </p>
-            
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Note (Optional)
-              </label>
-              <input
-                type="text"
-                value={transferNote}
-                onChange={(e) => setTransferNote(e.target.value)}
-                placeholder="e.g., Schedule conflict, Parent request"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                }}
-              />
-            </div>
-            
-            {/* Active/All Programs Toggle */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>
-                <input
-                  type="checkbox"
-                  checked={showAllProgramsInMove}
-                  onChange={(e) => setShowAllProgramsInMove(e.target.checked)}
-                  style={{ marginRight: '0.5rem', cursor: 'pointer' }}
-                />
-                Show completed programs
-              </label>
-            </div>
-            
-            <div style={{ marginBottom: '1.5rem' }}>
-              {(() => {
-                // Helper functions
-                const normalizeProductName = (name: string): string => {
-                  return name
-                    .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
-                    .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
-                    .replace(/\s*-?\s*FULL\s*$/gi, '')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                }
+      {loading && <p>Loading roster...</p>}
 
-                const isProgramActive = (programName: string): boolean => {
-                  let product = products?.find(p => normalizeProductName(p.name) === programName)
-                  if (!product) {
-                    const normalizedProgram = normalizeProductName(programName).toLowerCase()
-                    product = products?.find(p => {
-                      const normalizedProduct = normalizeProductName(p.name).toLowerCase()
-                      return normalizedProgram.includes(normalizedProduct) || normalizedProduct.includes(normalizedProgram)
-                    })
-                  }
-                  return product ? product.status === 'publish' : true
-                }
+      <style jsx>{`
+        /* Shared Styles */
+        .btn {
+          border: none;
+          border-radius: 4px;
+          color: white;
+          padding: 6px 12px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 500;
+        }
 
-                // Filter programs
-                const filteredPrograms = showAllProgramsInMove 
-                  ? allPrograms 
-                  : allPrograms.filter(p => isProgramActive(p))
+        .btn:hover {
+          opacity: 0.9;
+        }
 
-                if (filteredPrograms.length === 0) {
-                  return (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: '#666' }}>
-                      No {showAllProgramsInMove ? '' : 'active '}programs available.
-                      {!showAllProgramsInMove && ' Try checking "Show completed programs".'}
-                    </div>
-                  )
-                }
+        .main-btn {
+          padding: 10px 20px;
+          border-radius: 5px;
+          font-weight: bold;
+          font-size: 14px;
+        }
 
-                return filteredPrograms.map((program) => (
-                  <button
-                    key={program}
-                    onClick={() => confirmMove(program)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '1rem',
-                      marginBottom: '0.5rem',
-                      backgroundColor: 'white',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f0f9ff'
-                      e.currentTarget.style.borderColor = '#0070f3'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'white'
-                      e.currentTarget.style.borderColor = '#ddd'
-                    }}
-                  >
-                    {program}
-                  </button>
-                ))
-              })()}
-            </div>
+        .blue { background: #007bff; }
+        .green { background: #28a745; }
+        .grey { background: #6c757d; }
+        .orange { background: #ff9800; }
 
-            <button
-              onClick={() => setMovingPlayer(null)}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+        .btn-edit { background: #6f42c1; }
+        .btn-move { background: #007bff; }
+        .btn-remove { background: #dc3545; }
 
-      {/* Remove Modal */}
-      {removingPlayer && (
-        <div 
-          onClick={() => setRemovingPlayer(null)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}>
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-            }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              Remove {removingPlayer.player_name}?
-            </h3>
-            
-            <p style={{ marginBottom: '1.5rem', color: '#666' }}>
-              Player can be restored later from the removed list.
-            </p>
+        .status-active {
+          background: #e2f5ea;
+          color: #28a745;
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: bold;
+        }
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Reason (Optional)
-              </label>
-              <input
-                type="text"
-                value={removeNote}
-                onChange={(e) => setRemoveNote(e.target.value)}
-                placeholder="e.g., Injury, Schedule conflict"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                }}
-              />
-            </div>
+        .status-removed {
+          background: #f8d7da;
+          color: #dc3545;
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: bold;
+        }
 
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setRemovingPlayer(null)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmRemove}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        /* Desktop Action Buttons */
+        .top-actions {
+          display: flex;
+          gap: 10px;
+          margin: 20px 0;
+          flex-wrap: wrap;
+        }
+
+        /* Desktop Table */
+        .desktop-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+          background: white;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .desktop-table th {
+          text-align: left;
+          border-bottom: 2px solid #eee;
+          padding: 12px;
+          color: #666;
+          font-size: 14px;
+          background: #f8f9fa;
+        }
+
+        .desktop-table td {
+          padding: 12px;
+          border-bottom: 1px solid #eee;
+          font-size: 14px;
+        }
+
+        .desktop-table tr:hover {
+          background: #f8f9fa;
+        }
+
+        .desktop-table td button {
+          margin-right: 5px;
+        }
+
+        /* Hide mobile elements by default */
+        .mobile-only {
+          display: none;
+        }
+
+        /* Mobile Styles - Activate at 768px and below */
+        @media screen and (max-width: 768px) {
+          .desktop-table,
+          .top-actions {
+            display: none !important;
+          }
+
+          .mobile-only {
+            display: block !important;
+          }
+
+          /* Mobile Button Grid (2x2) */
+          .mobile-btn-grid {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+          }
+
+          .mobile-btn-grid .btn {
+            width: 100%;
+          }
+
+          /* Registration Cards */
+          .card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+          }
+
+          .card-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            align-items: center;
+          }
+
+          .card-row:last-of-type {
+            margin-bottom: 0;
+          }
+
+          .label {
+            color: #888;
+            font-weight: bold;
+            font-size: 0.9em;
+          }
+
+          .card-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+          }
+
+          .card-actions .btn {
+            width: 100%;
+            padding: 8px 4px;
+            font-size: 12px;
+          }
+        }
+      `}</style>
     </div>
   )
-}
-
-const tableHeaderStyle: React.CSSProperties = {
-  padding: '0.75rem 1rem',
-  textAlign: 'left',
-  fontWeight: '600',
-  fontSize: '0.875rem',
-  color: '#4a5568',
-  borderBottom: '2px solid #e2e8f0',
-}
-
-const tableCellStyle: React.CSSProperties = {
-  padding: '1rem',
-  fontSize: '0.875rem',
 }
