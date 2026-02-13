@@ -91,18 +91,10 @@ export default function Home() {
     }
     
     setLoading(false)
-    
-    // Fetch installment counts for all orders
-    // TEMPORARILY DISABLED - This was causing slowness
-    // if (ordersData && ordersData.length > 0) {
-    //   const orderIds = ordersData.map(o => o.order_id)
-    //   fetchInstallmentCounts(orderIds)
-    // }
   }
 
   // Installments Functions
   const fetchInstallmentCounts = async (orderIds: number[]) => {
-    // Fetch installments for all orders
     const counts: {[orderId: number]: {total: number, paid: number, totalDue: number, totalPaid: number}} = {}
     
     for (const orderId of orderIds) {
@@ -162,7 +154,6 @@ export default function Home() {
       })
     })
 
-    // Clear form
     setEditingInstallment(null)
     setInstallmentNumber('')
     setAmountDue('')
@@ -171,7 +162,6 @@ export default function Home() {
     setPaidDate('')
     setInstallmentNotes('')
 
-    // Refresh list
     if (selectedOrderId) {
       fetchInstallments(selectedOrderId)
       fetchInstallmentCounts([selectedOrderId])
@@ -203,46 +193,104 @@ export default function Home() {
   const deleteInstallment = async (id: number) => {
     if (!confirm('Delete this installment?')) return
     
-    await fetch(`/api/order-installments?id=${id}`, { method: 'DELETE' })
+    await fetch('/api/order-installments', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+
     if (selectedOrderId) {
       fetchInstallments(selectedOrderId)
       fetchInstallmentCounts([selectedOrderId])
     }
-    alert('✅ Installment deleted')
+    alert('✅ Deleted!')
   }
 
-  // Sync orders from WooCommerce
   const syncOrders = async () => {
     setSyncing(true)
     try {
-      const response = await fetch('/api/sync-orders', {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-      })
-      const result = await response.json()
+      const response = await fetch('/api/sync-orders')
+      const data = await response.json()
       
-      if (result.success) {
-        alert(`Successfully synced ${result.orderCount} orders!`)
+      if (data.success) {
+        alert(`✅ Synced ${data.orderCount} orders with ${data.productCount} products`)
         fetchOrders()
       } else {
-        alert('Failed to sync orders: ' + result.error)
+        alert('❌ Sync failed: ' + (data.error || 'Unknown error'))
       }
     } catch (error) {
-      alert('Error syncing orders: ' + error)
+      console.error('Sync error:', error)
+      alert('❌ Sync failed')
     }
     setSyncing(false)
   }
 
-  // Handle date preset selection
+  useEffect(() => {
+    fetchOrders()
+  }, [])
+
+  // Apply filters
+  useEffect(() => {
+    let filtered = [...orders]
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(order =>
+        order.customer_first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.customer_last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.customer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.order_number?.toString().includes(searchTerm)
+      )
+    }
+
+    // Status filter
+    if (statusFilter) {
+      filtered = filtered.filter(order => order.status === statusFilter)
+    }
+
+    // Payment type filter
+    if (paymentTypeFilter) {
+      filtered = filtered.filter(order => order.payment_method_title === paymentTypeFilter)
+    }
+
+    // Course filter
+    if (selectedCourses.length > 0) {
+      filtered = filtered.filter(order => {
+        if (!order.products || !Array.isArray(order.products)) return false
+        return order.products.some((product: any) =>
+          selectedCourses.includes(product.name)
+        )
+      })
+    }
+
+    // Date filter
+    if (dateFrom) {
+      filtered = filtered.filter(order =>
+        new Date(order.date_created) >= new Date(dateFrom)
+      )
+    }
+    if (dateTo) {
+      filtered = filtered.filter(order =>
+        new Date(order.date_created) <= new Date(dateTo)
+      )
+    }
+
+    setFilteredOrders(filtered)
+    setCurrentPage(1)
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders])
+
+  // Date preset handler
   const handleDatePreset = (preset: string) => {
     setDatePreset(preset)
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
-    
-    switch(preset) {
+
+    switch (preset) {
+      case 'all':
+        setDateFrom('')
+        setDateTo('')
+        break
       case 'today':
         setDateFrom(today.toISOString().split('T')[0])
         setDateTo(today.toISOString().split('T')[0])
@@ -252,338 +300,143 @@ export default function Home() {
         setDateTo(yesterday.toISOString().split('T')[0])
         break
       case 'last7':
-        const week = new Date(today)
-        week.setDate(week.getDate() - 7)
-        setDateFrom(week.toISOString().split('T')[0])
+        const last7 = new Date(today)
+        last7.setDate(last7.getDate() - 7)
+        setDateFrom(last7.toISOString().split('T')[0])
         setDateTo(today.toISOString().split('T')[0])
         break
       case 'last14':
-        const twoWeeks = new Date(today)
-        twoWeeks.setDate(twoWeeks.getDate() - 14)
-        setDateFrom(twoWeeks.toISOString().split('T')[0])
+        const last14 = new Date(today)
+        last14.setDate(last14.getDate() - 14)
+        setDateFrom(last14.toISOString().split('T')[0])
         setDateTo(today.toISOString().split('T')[0])
         break
       case 'last30':
-        const month = new Date(today)
-        month.setDate(month.getDate() - 30)
-        setDateFrom(month.toISOString().split('T')[0])
+        const last30 = new Date(today)
+        last30.setDate(last30.getDate() - 30)
+        setDateFrom(last30.toISOString().split('T')[0])
         setDateTo(today.toISOString().split('T')[0])
         break
       case 'thisMonth':
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-        setDateFrom(monthStart.toISOString().split('T')[0])
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+        setDateFrom(firstDay.toISOString().split('T')[0])
         setDateTo(today.toISOString().split('T')[0])
         break
       case 'lastMonth':
-        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-        setDateFrom(lastMonthStart.toISOString().split('T')[0])
-        setDateTo(lastMonthEnd.toISOString().split('T')[0])
-        break
-      case 'custom':
-        // User will set dates manually
+        const lastMonthFirst = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        const lastMonthLast = new Date(today.getFullYear(), today.getMonth(), 0)
+        setDateFrom(lastMonthFirst.toISOString().split('T')[0])
+        setDateTo(lastMonthLast.toISOString().split('T')[0])
         break
     }
   }
 
-  // Apply filters
-  useEffect(() => {
-    let filtered = [...orders]
-
-    // Helper function to categorize product
-    const getProductType = (order: Order): string => {
-      if (!order.products || !Array.isArray(order.products)) return 'Other'
+  // Group courses by category
+  const groupCoursesByCategory = () => {
+    const categories: {[key: string]: string[]} = {}
+    
+    products.forEach(product => {
+      const name = product.name
+      let category = 'Other'
       
-      const productNames = order.products.map((p: any) => p.name?.toLowerCase() || '').join(' ')
+      if (name.includes('Beginner Hockey')) category = 'Beginner Hockey'
+      else if (name.includes('Skills Development')) category = 'Skills Development'
+      else if (name.includes('Power Skating')) category = 'Power Skating'
       
-      // Check for Beginner Hockey
-      if (productNames.includes('beginner hockey') || productNames.includes('pre-beginner')) {
-        return 'Beginner Hockey'
-      }
-      
-      // Check for Skills Development (fixed keywords)
-      if (
-        productNames.includes('powerskating') ||
-        productNames.includes('power skating') ||
-        productNames.includes('shooting & puck handling') ||
-        productNames.includes('shooting and puck handling') ||
-        productNames.includes('goalie camp')
-      ) {
-        return 'Skills Development'
-      }
-      
-      // Everything else is Merchandise
-      return 'Merchandise'
-    }
+      if (!categories[category]) categories[category] = []
+      categories[category].push(name)
+    })
+    
+    return categories
+  }
 
-    // Normalize product name helper (must match getCoursesByCategory logic)
-    const normalizeProductName = (name: string): string => {
-      return name
-        .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
-        .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
-        .replace(/\s*-?\s*FULL\s*$/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim()
+  const toggleCategory = (category: string) => {
+    const courses = groupCoursesByCategory()[category] || []
+    const allSelected = courses.every(course => selectedCourses.includes(course))
+    
+    if (allSelected) {
+      setSelectedCourses(selectedCourses.filter(c => !courses.includes(c)))
+    } else {
+      setSelectedCourses([...new Set([...selectedCourses, ...courses])])
     }
+  }
 
-    // Get all normalized product names from an order
-    const getProductNames = (order: Order): string[] => {
-      if (!order.products || !Array.isArray(order.products)) return []
-      return order.products.map((p: any) => normalizeProductName(p.name || ''))
+  const toggleCourse = (course: string) => {
+    if (selectedCourses.includes(course)) {
+      setSelectedCourses(selectedCourses.filter(c => c !== course))
+    } else {
+      setSelectedCourses([...selectedCourses, course])
     }
+  }
 
-    // Search filter (name, email, order number)
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (order) =>
-          order.customer_first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.customer_last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.customer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.order_number?.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-
-    // Status filter
-    if (statusFilter) {
-      filtered = filtered.filter((order) => order.status === statusFilter)
-    }
-
-    // Payment type filter
-    if (paymentTypeFilter) {
-      filtered = filtered.filter((order) => order.payment_method_title === paymentTypeFilter)
-    }
-
-    // Course multi-select filter (using normalized names)
-    if (selectedCourses.length > 0) {
-      filtered = filtered.filter((order) => {
-        const orderProducts = getProductNames(order)
-        return orderProducts.some(product => selectedCourses.includes(product))
-      })
-    }
-
-    // Date range filter
-    if (dateFrom) {
-      filtered = filtered.filter(
-        (order) => new Date(order.date_created) >= new Date(dateFrom)
-      )
-    }
-    if (dateTo) {
-      filtered = filtered.filter(
-        (order) => new Date(order.date_created) <= new Date(dateTo)
-      )
-    }
-
-    setFilteredOrders(filtered)
-    setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders])
-
-  // Get paginated orders
+  // Pagination
   const indexOfLastOrder = currentPage * ordersPerPage
   const indexOfFirstOrder = indexOfLastOrder - ordersPerPage
   const currentOrders = filteredOrders.slice(indexOfFirstOrder, indexOfLastOrder)
   const totalPages = Math.ceil(filteredOrders.length / ordersPerPage)
 
-  // Get unique courses grouped by category with active/total counts
-  const getCoursesByCategory = () => {
-    const courseMap: { [key: string]: { allCourses: Set<string>, activeCourses: Set<string> } } = {
-      'Beginner Hockey': { allCourses: new Set(), activeCourses: new Set() },
-      'Skills Development': { allCourses: new Set(), activeCourses: new Set() },
-      'Merchandise': { allCourses: new Set(), activeCourses: new Set() },
-    }
-
-    // Function to normalize product names (remove inventory indicators)
-    const normalizeProductName = (name: string): string => {
-      return name
-        .replace(/\s*-?\s*\d+\s*SPOTS?\s*LEFT/gi, '')
-        .replace(/\s*-?\s*\d+%?\s*FULL/gi, '')
-        .replace(/\s*-?\s*FULL\s*$/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-    }
-
-    // Check if a product is active (published)
-    const isProductActive = (productName: string): boolean => {
-      const product = products.find(p => normalizeProductName(p.name) === productName)
-      return product ? product.status === 'publish' : false
-    }
-
-    orders.forEach((order) => {
-      if (!order.products || !Array.isArray(order.products)) return
-      
-      order.products.forEach((product: any) => {
-        const productName = product.name
-        if (!productName) return
-
-        const normalizedName = normalizeProductName(productName)
-        const productLower = normalizedName.toLowerCase()
-        const isActive = isProductActive(normalizedName)
-        
-        if (productLower.includes('beginner hockey') || productLower.includes('pre-beginner')) {
-          courseMap['Beginner Hockey'].allCourses.add(normalizedName)
-          if (isActive) courseMap['Beginner Hockey'].activeCourses.add(normalizedName)
-        } else if (
-          productLower.includes('powerskating') ||
-          productLower.includes('power skating') ||
-          productLower.includes('shooting & puck handling') ||
-          productLower.includes('shooting and puck handling') ||
-          productLower.includes('goalie camp')
-        ) {
-          courseMap['Skills Development'].allCourses.add(normalizedName)
-          if (isActive) courseMap['Skills Development'].activeCourses.add(normalizedName)
-        } else {
-          courseMap['Merchandise'].allCourses.add(normalizedName)
-          if (isActive) courseMap['Merchandise'].activeCourses.add(normalizedName)
-        }
-      })
-    })
-
-    // Return courses based on filter selection
-    const getCoursesForCategory = (category: keyof typeof courseMap) => {
-      if (programFilter === 'active') {
-        return Array.from(courseMap[category].activeCourses).sort()
-      }
-      return Array.from(courseMap[category].allCourses).sort()
-    }
-
-    return {
-      'Beginner Hockey': {
-        courses: getCoursesForCategory('Beginner Hockey'),
-        activeCount: courseMap['Beginner Hockey'].activeCourses.size,
-        totalCount: courseMap['Beginner Hockey'].allCourses.size,
-      },
-      'Skills Development': {
-        courses: getCoursesForCategory('Skills Development'),
-        activeCount: courseMap['Skills Development'].activeCourses.size,
-        totalCount: courseMap['Skills Development'].allCourses.size,
-      },
-      'Merchandise': {
-        courses: getCoursesForCategory('Merchandise'),
-        activeCount: courseMap['Merchandise'].activeCourses.size,
-        totalCount: courseMap['Merchandise'].allCourses.size,
-      },
-    }
-  }
-
-  const coursesByCategory = getCoursesByCategory()
-
-  // Toggle course selection
-  const toggleCourse = (courseName: string) => {
-    setSelectedCourses(prev =>
-      prev.includes(courseName)
-        ? prev.filter(c => c !== courseName)
-        : [...prev, courseName]
-    )
-  }
-
-  // Toggle all courses in a category
-  const toggleCategory = (category: string) => {
-    const categoryData = coursesByCategory[category as keyof typeof coursesByCategory]
-    const categoryCourses = categoryData.courses
-    const allSelected = categoryCourses.every(course => selectedCourses.includes(course))
-    
-    if (allSelected) {
-      // Deselect all in category
-      setSelectedCourses(prev => prev.filter(c => !categoryCourses.includes(c)))
-    } else {
-      // Select all in category
-      setSelectedCourses(prev => {
-        const newSelection = [...prev]
-        categoryCourses.forEach(course => {
-          if (!newSelection.includes(course)) {
-            newSelection.push(course)
-          }
-        })
-        return newSelection
-      })
-    }
-  }
-
-  // Toggle category expansion
-  const toggleExpand = (category: string) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [category]: !prev[category]
-    }))
-  }
-
-  useEffect(() => {
-    fetchOrders()
-  }, [])
-
-  // Get unique statuses for filter dropdown
-  const statuses = Array.from(new Set(orders.map((o) => o.status)))
-  const paymentTypes = Array.from(new Set(orders.map((o) => o.payment_method_title).filter(Boolean)))
+  const categorizedCourses = groupCoursesByCategory()
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8f9fa', minHeight: '100vh', padding: '2rem' }}>
+      {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-          📦 Orders
-        </h1>
-        <p style={{ color: '#666' }}>WooCommerce order tracking and filtering</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '2rem' }}>📋</span>
+          <h1 style={{ fontSize: '2rem', fontWeight: '700', margin: 0 }}>Orders</h1>
+        </div>
+        <p style={{ color: '#666', margin: 0 }}>WooCommerce order tracking and filtering</p>
       </div>
 
-      {/* Sync Button and Navigation */}
-      <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <button
           onClick={syncOrders}
           disabled={syncing}
           style={{
             padding: '0.75rem 1.5rem',
-            backgroundColor: syncing ? '#ccc' : '#0070f3',
+            backgroundColor: '#0070f3',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
-            fontWeight: '500',
+            fontWeight: '600',
+            fontSize: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            opacity: syncing ? 0.6 : 1,
           }}
         >
-          {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
+          🔄 {syncing ? 'Syncing...' : 'Sync Orders from WooCommerce'}
         </button>
-
-        <a
-          href="/programs"
+        <button
+          onClick={() => window.location.href = '/programs'}
           style={{
             padding: '0.75rem 1.5rem',
             backgroundColor: '#10b981',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: '600',
             fontSize: '1rem',
-            textDecoration: 'none',
-            fontWeight: '500',
-            display: 'inline-block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
           }}
         >
-          📋 Manage Programs
-        </a>
+          📚 Manage Programs
+        </button>
       </div>
 
       {/* Filters */}
-      <div
-        style={{
-          backgroundColor: 'white',
-          padding: '1.5rem',
-          borderRadius: '8px',
-          marginBottom: '2rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        }}
-      >
-        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', fontWeight: '600' }}>
-          Filters
-        </h2>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '1rem',
-          }}
-        >
+      <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginTop: 0, marginBottom: '1rem' }}>Filters</h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Search
-            </label>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Search</label>
             <input
               type="text"
               placeholder="Name, email, order #"
@@ -594,14 +447,13 @@ export default function Home() {
                 padding: '0.5rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
+                fontSize: '0.875rem',
               }}
             />
           </div>
-
+          
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Status
-            </label>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Status</label>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -610,22 +462,19 @@ export default function Home() {
                 padding: '0.5rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
+                fontSize: '0.875rem',
               }}
             >
               <option value="">All Statuses</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
+              <option value="processing">Processing</option>
+              <option value="completed">Completed</option>
+              <option value="on-hold">On Hold</option>
+              <option value="refunded">Refunded</option>
             </select>
           </div>
-
-          {/* Payment Type Filter */}
+          
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Payment Type
-            </label>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Payment Type</label>
             <select
               value={paymentTypeFilter}
               onChange={(e) => setPaymentTypeFilter(e.target.value)}
@@ -634,269 +483,138 @@ export default function Home() {
                 padding: '0.5rem',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
+                fontSize: '0.875rem',
               }}
             >
               <option value="">All Payment Types</option>
-              {paymentTypes.sort().map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
+              <option value="Card">Card</option>
+              <option value="E-transfer">E-transfer</option>
+              <option value="Link">Link</option>
+              <option value="Google Pay">Google Pay</option>
+              <option value="Apple Pay">Apple Pay</option>
             </select>
-          </div>
-
-          {/* Date Presets */}
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Date Range
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <button
-                onClick={() => {
-                  setDatePreset('')
-                  setDateFrom('')
-                  setDateTo('')
-                }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: !datePreset ? '#0070f3' : 'white',
-                  color: !datePreset ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: !datePreset ? '600' : '400',
-                }}
-              >
-                All
-              </button>
-              <button
-                onClick={() => handleDatePreset('today')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'today' ? '#0070f3' : 'white',
-                  color: datePreset === 'today' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => handleDatePreset('yesterday')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'yesterday' ? '#0070f3' : 'white',
-                  color: datePreset === 'yesterday' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => handleDatePreset('last7')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'last7' ? '#0070f3' : 'white',
-                  color: datePreset === 'last7' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Last 7 Days
-              </button>
-              <button
-                onClick={() => handleDatePreset('last14')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'last14' ? '#0070f3' : 'white',
-                  color: datePreset === 'last14' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Last 14 Days
-              </button>
-              <button
-                onClick={() => handleDatePreset('last30')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'last30' ? '#0070f3' : 'white',
-                  color: datePreset === 'last30' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Last 30 Days
-              </button>
-              <button
-                onClick={() => handleDatePreset('thisMonth')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'thisMonth' ? '#0070f3' : 'white',
-                  color: datePreset === 'thisMonth' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => handleDatePreset('lastMonth')}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'lastMonth' ? '#0070f3' : 'white',
-                  color: datePreset === 'lastMonth' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Last Month
-              </button>
-              <button
-                onClick={() => { handleDatePreset('custom'); }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: datePreset === 'custom' ? '#0070f3' : 'white',
-                  color: datePreset === 'custom' ? 'white' : '#333',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
-              >
-                Custom
-              </button>
-            </div>
-
-            {/* Show custom date inputs only when Custom is selected */}
-            {datePreset === 'custom' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                    From Date
-                  </label>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Nested Course Filter */}
-        <div style={{ marginTop: '1.5rem' }}>
-          <label style={{ display: 'block', marginBottom: '1rem', fontWeight: '600', fontSize: '1.1rem' }}>
-            Filter by Course
-          </label>
+        {/* Date Range */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Date Range</label>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} className="date-buttons">
+            {[
+              { label: 'All', value: 'all' },
+              { label: 'Today', value: 'today' },
+              { label: 'Yesterday', value: 'yesterday' },
+              { label: 'Last 7 Days', value: 'last7' },
+              { label: 'Last 14 Days', value: 'last14' },
+              { label: 'Last 30 Days', value: 'last30' },
+              { label: 'This Month', value: 'thisMonth' },
+              { label: 'Last Month', value: 'lastMonth' },
+              { label: 'Custom', value: 'custom' },
+            ].map(preset => (
+              <button
+                key={preset.value}
+                onClick={() => handleDatePreset(preset.value)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  border: '1px solid #ddd',
+                  backgroundColor: datePreset === preset.value ? '#0070f3' : 'white',
+                  color: datePreset === preset.value ? 'white' : '#333',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: datePreset === preset.value ? '600' : '400',
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
           
-          {/* Active/All Programs Radio Buttons */}
-          <div style={{ 
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            backgroundColor: '#f0f9ff',
-            borderRadius: '6px',
-            border: '1px solid #bfdbfe'
-          }}>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+          {datePreset === 'custom' && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Filter by Course */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <h4 style={{ fontSize: '1rem', fontWeight: '600', margin: 0 }}>Filter by Course</h4>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                 <input
                   type="radio"
-                  name="programFilter"
                   checked={programFilter === 'active'}
                   onChange={() => setProgramFilter('active')}
-                  style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+                  style={{ cursor: 'pointer' }}
                 />
                 Active Programs Only
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontWeight: '500' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                 <input
                   type="radio"
-                  name="programFilter"
                   checked={programFilter === 'all'}
                   onChange={() => setProgramFilter('all')}
-                  style={{ marginRight: '0.5rem', cursor: 'pointer' }}
+                  style={{ cursor: 'pointer' }}
                 />
                 All Programs (including completed)
               </label>
             </div>
           </div>
-
-          {/* Collapsible Categories */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {Object.entries(coursesByCategory).map(([category, categoryData]) => {
-              const { courses, activeCount, totalCount } = categoryData
-              if (courses.length === 0) return null
-              
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {Object.entries(categorizedCourses).map(([category, courses]) => {
               const isExpanded = expandedCategories[category]
               const allSelected = courses.every(course => selectedCourses.includes(course))
-              const someSelected = courses.some(course => selectedCourses.includes(course))
+              const someSelected = courses.some(course => selectedCourses.includes(course)) && !allSelected
               
               return (
-                <div key={category} style={{ 
-                  border: '1px solid #e5e5e5',
-                  borderRadius: '6px',
-                  backgroundColor: 'white',
-                  overflow: 'hidden'
-                }}>
-                  {/* Category Header - Always Visible */}
-                  <div style={{ 
-                    padding: '0.75rem 1rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    backgroundColor: isExpanded ? '#f9fafb' : 'white',
-                    borderBottom: isExpanded ? '1px solid #e5e5e5' : 'none'
-                  }}>
-                    {/* Expand/Collapse Arrow */}
+                <div key={category} style={{ border: '1px solid #e5e5e5', borderRadius: '6px', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '1rem',
+                      backgroundColor: '#fafafa',
+                      cursor: 'pointer',
+                    }}
+                  >
                     <button
-                      onClick={() => toggleExpand(category)}
+                      onClick={() => setExpandedCategories({ ...expandedCategories, [category]: !isExpanded })}
                       style={{
                         background: 'none',
                         border: 'none',
                         cursor: 'pointer',
-                        padding: '0.25rem',
+                        padding: 0,
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '1.2rem',
@@ -906,7 +624,6 @@ export default function Home() {
                       {isExpanded ? '▼' : '▶'}
                     </button>
                     
-                    {/* Category Checkbox */}
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -921,16 +638,14 @@ export default function Home() {
                       }}
                     />
                     
-                    {/* Category Name and Count */}
                     <span style={{ fontWeight: '600', fontSize: '1rem', flex: 1 }}>
                       {category}
                       <span style={{ fontWeight: '400', color: '#666', marginLeft: '0.5rem' }}>
-                        ({programFilter === 'active' ? `${activeCount} active` : `${activeCount} active, ${totalCount} total`})
+                        ({courses.length} {courses.length === 1 ? 'course' : 'courses'})
                       </span>
                     </span>
                   </div>
                   
-                  {/* Individual Courses - Shown when expanded */}
                   {isExpanded && (
                     <div style={{ 
                       padding: '1rem',
@@ -980,9 +695,11 @@ export default function Home() {
             onClick={() => {
               setSearchTerm('')
               setStatusFilter('')
+              setPaymentTypeFilter('')
               setSelectedCourses([])
               setDateFrom('')
               setDateTo('')
+              setDatePreset('')
             }}
             style={{
               marginTop: '1rem',
@@ -998,8 +715,9 @@ export default function Home() {
         )}
       </div>
 
-      {/* Orders Table */}
+      {/* Orders Table - DESKTOP */}
       <div
+        className="desktop-only"
         style={{
           backgroundColor: 'white',
           borderRadius: '8px',
@@ -1109,7 +827,6 @@ export default function Home() {
                         onChange={async (e) => {
                           const newStatus = e.target.checked ? 'unpaid' : 'paid'
                           
-                          // Update via API
                           await fetch('/api/orders', {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
@@ -1119,7 +836,6 @@ export default function Home() {
                             })
                           })
                           
-                          // Refresh orders
                           fetchOrders()
                         }}
                         style={{
@@ -1151,10 +867,12 @@ export default function Home() {
                         <span
                           onClick={() => openInstallmentsModal(order)}
                           style={{
-                            color: '#6b7280',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
                             fontSize: '0.813rem',
                             cursor: 'pointer',
-                            textDecoration: 'underline',
+                            backgroundColor: '#f3f4f6',
+                            color: '#6b7280',
                           }}
                         >
                           + Add
@@ -1167,106 +885,205 @@ export default function Home() {
             </table>
           </div>
         )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ padding: '1rem', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '0.5rem 1rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                backgroundColor: currentPage === 1 ? '#f5f5f5' : 'white',
+              }}
+            >
+              Previous
+            </button>
+            <span style={{ padding: '0.5rem 1rem', color: '#666' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '0.5rem 1rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                backgroundColor: currentPage === totalPages ? '#f5f5f5' : 'white',
+              }}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Pagination Controls */}
-      {filteredOrders.length > ordersPerPage && (
-        <div style={{
-          marginTop: '2rem',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '1rem'
-        }}>
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: currentPage === 1 ? '#e5e5e5' : '#0070f3',
-              color: currentPage === 1 ? '#999' : 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            ← Previous
-          </button>
-          
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {/* Show page numbers */}
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum
-              if (totalPages <= 5) {
-                pageNum = i + 1
-              } else if (currentPage <= 3) {
-                pageNum = i + 1
-              } else if (currentPage >= totalPages - 2) {
-                pageNum = totalPages - 4 + i
-              } else {
-                pageNum = currentPage - 2 + i
-              }
-              
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
+      {/* Orders Cards - MOBILE */}
+      <div className="mobile-only">
+        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.875rem', color: '#666' }}>
+            Showing {filteredOrders.length} orders
+          </span>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', background: 'white', borderRadius: '8px' }}>Loading...</div>
+        ) : filteredOrders.length === 0 ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#666', background: 'white', borderRadius: '8px' }}>
+            No orders found.
+          </div>
+        ) : (
+          currentOrders.map((order) => (
+            <div
+              key={order.id}
+              className="order-card"
+              style={{
+                background: 'white',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1rem',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                border: '1px solid #eee',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                    {order.customer_first_name} {order.customer_last_name}
+                  </div>
+                  <div style={{ color: '#666', fontSize: '0.85em', marginTop: '0.25rem' }}>
+                    #{order.order_number} • {new Date(order.date_created).toLocaleDateString()}
+                  </div>
+                </div>
+                <span
                   style={{
-                    padding: '0.5rem 0.75rem',
-                    backgroundColor: currentPage === pageNum ? '#0070f3' : 'white',
-                    color: currentPage === pageNum ? 'white' : '#333',
-                    border: '1px solid #ddd',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    backgroundColor:
+                      order.status === 'completed'
+                        ? '#d4edda'
+                        : order.status === 'processing'
+                        ? '#fff3cd'
+                        : '#f8d7da',
+                    color:
+                      order.status === 'completed'
+                        ? '#155724'
+                        : order.status === 'processing'
+                        ? '#856404'
+                        : '#721c24',
+                  }}
+                >
+                  {order.status}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  background: '#f8f9fa',
+                  padding: '0.75rem',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                  margin: '0.75rem 0',
+                  borderLeft: '3px solid #007bff',
+                }}
+              >
+                {order.products && Array.isArray(order.products) ? (
+                  order.products.map((product: any, idx: number) => (
+                    <div key={idx}>
+                      {product.name} (×{product.quantity})
+                    </div>
+                  ))
+                ) : (
+                  '-'
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #eee',
+                }}
+              >
+                <div style={{ color: '#666', fontSize: '0.85em' }}>
+                  Payment: <strong>{order.payment_method_title}</strong>
+                </div>
+                <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#10b981' }}>
+                  ${order.total}
+                </div>
+              </div>
+
+              {order.has_installments && (
+                <button
+                  onClick={() => openInstallmentsModal(order)}
+                  style={{
+                    marginTop: '0.75rem',
+                    width: '100%',
+                    padding: '0.5rem',
+                    background: '#fef3c7',
+                    color: '#92400e',
+                    border: 'none',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    fontWeight: currentPage === pageNum ? '600' : '400'
+                    fontWeight: '500',
+                    fontSize: '0.875rem',
                   }}
                 >
-                  {pageNum}
+                  💰 View Payment Plan
                 </button>
-              )
-            })}
-            
-            {totalPages > 5 && currentPage < totalPages - 2 && (
-              <>
-                <span style={{ color: '#999' }}>...</span>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    backgroundColor: 'white',
-                    color: '#333',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
+              )}
+            </div>
+          ))
+        )}
+
+        {/* Mobile Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '0.75rem 1.5rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                backgroundColor: currentPage === 1 ? '#f5f5f5' : 'white',
+                fontWeight: '600',
+              }}
+            >
+              ← Prev
+            </button>
+            <span style={{ padding: '0.75rem 1rem', color: '#666', display: 'flex', alignItems: 'center' }}>
+              {currentPage}/{totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '0.75rem 1.5rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                backgroundColor: currentPage === totalPages ? '#f5f5f5' : 'white',
+                fontWeight: '600',
+              }}
+            >
+              Next →
+            </button>
           </div>
-          
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: currentPage === totalPages ? '#e5e5e5' : '#0070f3',
-              color: currentPage === totalPages ? '#999' : 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            Next →
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Installments Modal */}
-      {showInstallments && selectedOrderId && (
+      {showInstallments && (
         <div
           onClick={() => setShowInstallments(false)}
           style={{
@@ -1280,69 +1097,46 @@ export default function Home() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
+            padding: '1rem',
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: 'white',
-              padding: '2rem',
               borderRadius: '8px',
+              padding: '2rem',
               maxWidth: '800px',
-              width: '90%',
+              width: '100%',
               maxHeight: '90vh',
               overflowY: 'auto',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: '600', margin: 0 }}>
-                Installments: Order #{selectedOrderNumber}
+                Payment Plan - Order #{selectedOrderNumber}
               </h2>
               <button
                 onClick={() => setShowInstallments(false)}
                 style={{
-                  backgroundColor: 'transparent',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#f5f5f5',
                   border: 'none',
-                  fontSize: '1.5rem',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  color: '#6b7280',
+                  fontSize: '1.5rem',
+                  lineHeight: 1,
                 }}
               >
-                ✕
+                ×
               </button>
             </div>
 
-            {/* Summary */}
-            {installments.length > 0 && (
-              <div style={{
-                padding: '1rem',
-                backgroundColor: '#f0f9ff',
-                borderRadius: '6px',
-                marginBottom: '1.5rem',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                  <div>
-                    <strong>Total Due:</strong> ${installments.reduce((sum, i) => 
-                      sum + parseFloat(i.amount_due), 0).toFixed(2)}
-                  </div>
-                  <div>
-                    <strong>Total Paid:</strong> ${installments.reduce((sum, i) => 
-                      sum + parseFloat(i.amount_paid || '0'), 0).toFixed(2)}
-                  </div>
-                  <div style={{ color: '#ef4444' }}>
-                    <strong>Remaining:</strong> ${(installments.reduce((sum, i) => 
-                      sum + parseFloat(i.amount_due), 0) - 
-                      installments.reduce((sum, i) => 
-                      sum + parseFloat(i.amount_paid || '0'), 0)).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Add Installment Button */}
-            {!editingInstallment && !installmentNumber && (
+            {!editingInstallment && (
               <button
                 onClick={() => {
+                  setEditingInstallment({})
                   setInstallmentNumber(String(installments.length + 1))
                   setAmountDue('')
                   setAmountPaid('0')
@@ -1352,13 +1146,13 @@ export default function Home() {
                 }}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#0070f3',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '6px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
+                  fontWeight: '600',
                   marginBottom: '1.5rem',
-                  fontWeight: '500',
                 }}
               >
                 + Add Installment
@@ -1366,21 +1160,16 @@ export default function Home() {
             )}
 
             {/* Add/Edit Form */}
-            {(editingInstallment || installmentNumber) && (
-              <div style={{
-                padding: '1.5rem',
-                backgroundColor: '#f9fafb',
-                borderRadius: '6px',
-                marginBottom: '1.5rem',
-              }}>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: '600' }}>
-                  {editingInstallment ? 'Edit Installment' : 'New Installment'}
+            {editingInstallment && (
+              <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
+                <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>
+                  {editingInstallment.id ? 'Edit Installment' : 'New Installment'}
                 </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                      Installment # *
+                      Installment #
                     </label>
                     <input
                       type="number"
@@ -1397,10 +1186,11 @@ export default function Home() {
 
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                      Amount Due *
+                      Amount Due
                     </label>
                     <input
-                      type="text"
+                      type="number"
+                      step="0.01"
                       value={amountDue}
                       onChange={(e) => setAmountDue(e.target.value)}
                       placeholder="200.00"
@@ -1418,7 +1208,8 @@ export default function Home() {
                       Amount Paid
                     </label>
                     <input
-                      type="text"
+                      type="number"
+                      step="0.01"
                       value={amountPaid}
                       onChange={(e) => setAmountPaid(e.target.value)}
                       placeholder="0.00"
@@ -1636,6 +1427,36 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Mobile-Responsive CSS */}
+      <style jsx>{`
+        .desktop-only {
+          display: block;
+        }
+        .mobile-only {
+          display: none;
+        }
+
+        @media screen and (max-width: 768px) {
+          .desktop-only {
+            display: none !important;
+          }
+          .mobile-only {
+            display: block !important;
+          }
+
+          /* Make date buttons scrollable on mobile */
+          .date-buttons {
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .date-buttons button {
+            flex-shrink: 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
