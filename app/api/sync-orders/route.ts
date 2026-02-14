@@ -111,6 +111,38 @@ export async function GET() {
       )
     }
 
+    // CLEANUP: Remove orders that were deleted from WooCommerce
+    // Get all order IDs from WooCommerce (we already have them)
+    const wooOrderIds = allOrders.map(order => order.id)
+    
+    // Get all order IDs from Supabase
+    const { data: supabaseOrders, error: fetchError } = await supabase
+      .from('orders')
+      .select('order_id')
+    
+    if (!fetchError && supabaseOrders) {
+      const supabaseOrderIds = supabaseOrders.map(o => o.order_id)
+      
+      // Find orders in Supabase that don't exist in WooCommerce
+      const deletedOrderIds = supabaseOrderIds.filter(id => !wooOrderIds.includes(id))
+      
+      if (deletedOrderIds.length > 0) {
+        console.log(`Cleaning up ${deletedOrderIds.length} deleted orders:`, deletedOrderIds)
+        
+        // Delete registrations for these orders
+        await supabase
+          .from('program_registrations')
+          .delete()
+          .in('order_id', deletedOrderIds)
+        
+        // Delete the orders themselves
+        await supabase
+          .from('orders')
+          .delete()
+          .in('order_id', deletedOrderIds)
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

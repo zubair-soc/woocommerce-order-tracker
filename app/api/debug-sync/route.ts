@@ -9,17 +9,21 @@ export const revalidate = 0
 export async function GET() {
   try {
     // Fetch latest 5 orders from WooCommerce
+    // Exclude same statuses as frontend: checkout-draft, pending, failed, cancelled
     const wooResponse = await wooApi.get('orders', {
       per_page: 5,
       orderby: 'date',
       order: 'desc',
+      status: 'processing,completed,on-hold,refunded', // Only include visible statuses
     })
     const wooOrders = wooResponse.data
 
     // Fetch latest 5 orders from Supabase
+    // Match the frontend filter - exclude drafts, pending, failed, cancelled
     const { data: supabaseOrders, error } = await supabase
       .from('orders')
       .select('*')
+      .not('status', 'in', '("checkout-draft","pending","failed","cancelled")')
       .order('date_created', { ascending: false })
       .limit(5)
 
