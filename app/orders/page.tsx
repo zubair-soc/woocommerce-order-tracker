@@ -9,6 +9,8 @@ export default function Home() {
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [showDebug, setShowDebug] = useState(false)
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -215,17 +217,22 @@ export default function Home() {
   const syncOrders = async () => {
     setSyncing(true)
     try {
-      const response = await fetch('/api/sync-orders', {
+      // Add timestamp to bust cache
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/sync-orders?t=${timestamp}`, {
         cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         },
       })
       const result = await response.json()
       
       if (result.success) {
         alert(`Successfully synced ${result.orderCount} orders!`)
-        fetchOrders()
+        // Force a complete refresh of orders data
+        await fetchOrders()
       } else {
         alert('Failed to sync orders: ' + result.error)
       }
@@ -233,6 +240,26 @@ export default function Home() {
       alert('Error syncing orders: ' + error)
     }
     setSyncing(false)
+  }
+
+  // Debug sync status
+  const checkSyncStatus = async () => {
+    try {
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/debug-sync?t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      })
+      const result = await response.json()
+      setDebugInfo(result)
+      setShowDebug(true)
+    } catch (error) {
+      alert('Error checking sync status: ' + error)
+    }
   }
 
   // Handle date preset selection
@@ -542,6 +569,22 @@ export default function Home() {
           {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
         </button>
 
+        <button
+          onClick={checkSyncStatus}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#f59e0b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            fontWeight: '500',
+          }}
+        >
+          🔍 Check Sync Status
+        </button>
+
         <a
           href="/programs"
           style={{
@@ -559,6 +602,94 @@ export default function Home() {
           📋 Manage Programs
         </a>
       </div>
+
+      {/* Debug Info Panel */}
+      {showDebug && debugInfo && (
+        <div
+          style={{
+            backgroundColor: 'white',
+            padding: '1.5rem',
+            borderRadius: '8px',
+            marginBottom: '2rem',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            border: debugInfo.comparison?.allInSync ? '2px solid #10b981' : '2px solid #ef4444',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>
+              🔍 Sync Status Debug Info
+            </h2>
+            <button
+              onClick={() => setShowDebug(false)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#0070f3' }}>
+                WooCommerce (Latest 5)
+              </h3>
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Count:</strong> {debugInfo.wooCommerce.count}</p>
+                <p><strong>Latest Order ID:</strong> {debugInfo.wooCommerce.latestOrderId}</p>
+                <p><strong>Latest Order #:</strong> {debugInfo.wooCommerce.latestOrderNumber}</p>
+                <p><strong>Latest Date:</strong> {new Date(debugInfo.wooCommerce.latestOrderDate).toLocaleString()}</p>
+                <p><strong>Latest Status:</strong> {debugInfo.wooCommerce.latestOrderStatus}</p>
+                <p><strong>Order IDs:</strong> {debugInfo.wooCommerce.orderIds.join(', ')}</p>
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#10b981' }}>
+                Database (Latest 5)
+              </h3>
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Count:</strong> {debugInfo.supabase.count}</p>
+                <p><strong>Latest Order ID:</strong> {debugInfo.supabase.latestOrderId}</p>
+                <p><strong>Latest Order #:</strong> {debugInfo.supabase.latestOrderNumber}</p>
+                <p><strong>Latest Date:</strong> {debugInfo.supabase.latestOrderDate ? new Date(debugInfo.supabase.latestOrderDate).toLocaleString() : 'N/A'}</p>
+                <p><strong>Order IDs:</strong> {debugInfo.supabase.orderIds.join(', ')}</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              backgroundColor: debugInfo.comparison?.allInSync ? '#f0fdf4' : '#fef2f2',
+              borderRadius: '6px',
+              border: debugInfo.comparison?.allInSync ? '1px solid #10b981' : '1px solid #ef4444',
+            }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+              {debugInfo.comparison?.allInSync ? '✅ All In Sync!' : '❌ Sync Issue Detected'}
+            </h3>
+            {!debugInfo.comparison?.allInSync && (
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Missing in Database:</strong> Order IDs: {debugInfo.comparison.missingInSupabase.join(', ')}</p>
+                <p style={{ marginTop: '0.5rem', color: '#dc2626', fontWeight: '500' }}>
+                  ⚠️ Click "Sync Orders from WooCommerce" to fix this issue
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#9ca3af' }}>
+            Last checked: {new Date(debugInfo.timestamp).toLocaleString()}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div
