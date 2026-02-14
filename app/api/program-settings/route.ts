@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// Force dynamic rendering - settings can change frequently
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   const { data, error } = await supabase
     .from('program_settings')

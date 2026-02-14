@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { wooApi } from '@/lib/woocommerce'
 import { supabase } from '@/lib/supabase'
 
+// Force dynamic rendering - never cache this route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   try {
     // Fetch latest 5 orders from WooCommerce
