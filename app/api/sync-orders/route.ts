@@ -9,6 +9,8 @@ export const revalidate = 0
 export async function GET() {
   try {
     // Fetch all orders with pagination
+    // IMPORTANT: Only sync completed/processing orders to avoid draft orders
+    // that WooCommerce auto-deletes after 7 days, which would create orphaned registrations
     let allOrders: WooCommerceOrder[] = []
     let page = 1
     let hasMorePages = true
@@ -20,6 +22,7 @@ export async function GET() {
         page: page,
         orderby: 'date',
         order: 'desc',
+        status: 'processing,completed,on-hold,refunded', // Only sync real orders, exclude drafts/pending/failed/cancelled
       })
 
       const orders: WooCommerceOrder[] = response.data
