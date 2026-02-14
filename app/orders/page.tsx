@@ -261,10 +261,6 @@ export default function Home() {
       alert('Error checking sync status: ' + error)
     }
   }
-    } catch (error) {
-      alert('Error checking sync status: ' + error)
-    }
-  }
 
   // Handle date preset selection
   const handleDatePreset = (preset: string) => {
