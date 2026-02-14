@@ -27,7 +27,7 @@ export async function GET() {
     const wooOrderIds = wooOrders.map((o: any) => o.id)
     const supabaseOrderIds = supabaseOrders?.map(o => o.order_id) || []
     
-    const missingInSupabase = wooOrderIds.filter(id => !supabaseOrderIds.includes(id))
+    const missingInSupabase = wooOrderIds.filter((id: number) => !supabaseOrderIds.includes(id))
 
     return NextResponse.json({
       wooCommerce: {
