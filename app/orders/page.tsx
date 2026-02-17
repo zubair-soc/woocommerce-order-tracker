@@ -11,6 +11,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false)
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [showDebug, setShowDebug] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -535,6 +536,16 @@ export default function Home() {
 
   useEffect(() => {
     fetchOrders()
+    
+    // Check if mobile on mount
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    checkMobile()
+    
+    // Listen for resize
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
   // Get unique statuses for filter dropdown
@@ -1180,9 +1191,80 @@ export default function Home() {
           <div style={{ padding: '3rem', textAlign: 'center', color: '#666' }}>
             No orders found. Click "Sync Orders" to fetch from WooCommerce.
           </div>
+        ) : isMobile ? (
+          // Mobile Card View
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {currentOrders.map((order) => (
+              <div
+                key={order.id}
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                }}
+              >
+                {/* Header: Name and Status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
+                    {order.customer_first_name} {order.customer_last_name}
+                  </h3>
+                  <span style={{
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    backgroundColor: order.status === 'completed' ? '#dcfce7' : '#fef3c7',
+                    color: order.status === 'completed' ? '#166534' : '#92400e',
+                  }}>
+                    {order.status}
+                  </span>
+                </div>
+
+                {/* Order number and date */}
+                <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem' }}>
+                  #{order.order_number} • {new Date(order.date_created).toLocaleDateString()}
+                </div>
+
+                {/* Products */}
+                <div style={{ 
+                  padding: '0.75rem',
+                  backgroundColor: '#f9fafb',
+                  borderLeft: '4px solid #3b82f6',
+                  borderRadius: '4px',
+                  marginBottom: '0.75rem'
+                }}>
+                  {order.products && Array.isArray(order.products) && order.products.map((product: any, idx: number) => (
+                    <div key={idx} style={{ fontSize: '0.875rem', marginBottom: idx < order.products.length - 1 ? '0.25rem' : 0 }}>
+                      {product.name} {product.quantity > 1 ? `(×${product.quantity})` : ''}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Payment info */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.875rem', color: '#666' }}>
+                    Payment: <strong>{order.payment_method_title || order.payment_method}</strong>
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
+                    ${order.total}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          // Desktop Table View
+          <div style={{ 
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            position: 'relative',
+          }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              minWidth: '800px', // Ensure table doesn't compress too much
+            }}>
               <thead style={{ backgroundColor: '#f9f9f9' }}>
                 <tr>
                   <th style={tableHeaderStyle}>Order #</th>
