@@ -542,16 +542,25 @@ export default function Home() {
   const paymentTypes = Array.from(new Set(orders.map((o) => o.payment_method_title).filter(Boolean)))
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ 
+      padding: '1rem', // Mobile padding
+      maxWidth: '1400px', 
+      margin: '0 auto' 
+    }}>
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 'bold', marginBottom: '0.5rem' }}>
           📦 Orders
         </h1>
-        <p style={{ color: '#666' }}>WooCommerce order tracking and filtering</p>
+        <p style={{ color: '#666', fontSize: 'clamp(0.875rem, 2.5vw, 1rem)' }}>WooCommerce order tracking and filtering</p>
       </div>
 
       {/* Sync Button and Navigation */}
-      <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+      <div style={{ 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        gap: '1rem',
+        flexWrap: 'wrap', // Wrap on mobile
+      }}>
         <button
           onClick={syncOrders}
           disabled={syncing}
@@ -564,6 +573,8 @@ export default function Home() {
             fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
+            flex: '1 1 auto', // Flexible sizing
+            minWidth: '200px', // Minimum width before wrapping
           }}
         >
           {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
@@ -580,6 +591,8 @@ export default function Home() {
             fontSize: '1rem',
             cursor: 'pointer',
             fontWeight: '500',
+            flex: '1 1 auto',
+            minWidth: '180px',
           }}
         >
           🔍 Check Sync Status
@@ -597,6 +610,9 @@ export default function Home() {
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
+            flex: '1 1 auto',
+            minWidth: '180px',
+            textAlign: 'center',
           }}
         >
           📋 Manage Programs
@@ -634,7 +650,11 @@ export default function Home() {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', // Responsive grid
+            gap: '1.5rem' 
+          }}>
             <div>
               <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#0070f3' }}>
                 WooCommerce (Latest 5)

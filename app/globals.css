@@ -23,3 +23,23 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  /* Reduce padding on mobile */
+  body {
+    font-size: 14px;
+  }
+  
+  /* Make tables more readable on mobile */
+  table {
+    font-size: 0.875rem;
+  }
+  
+  /* Adjust button text on very small screens */
+  @media (max-width: 480px) {
+    button {
+      font-size: 0.9rem !important;
+    }
+  }
+}
