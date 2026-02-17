@@ -23,6 +23,7 @@ export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'open_registration' | 'in_progress' | 'completed' | 'archived' | 'all'>(() => {
     // Restore filter from sessionStorage on mount (handles back button)
     if (typeof window !== 'undefined') {
@@ -54,6 +55,16 @@ export default function ProgramsPage() {
       sessionStorage.setItem('programStatusFilter', statusFilter)
     }
   }, [statusFilter])
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const fetchPrograms = async () => {
     setLoading(true)
@@ -347,6 +358,125 @@ export default function ProgramsPage() {
       const showCategoryHeader = currentCategory !== program.category
       currentCategory = program.category
       
+      // Mobile Card View
+      if (isMobile) {
+        return (
+          <div key={program.name}>
+            {showCategoryHeader && (
+              <div style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: '#f9fafb',
+                fontWeight: '600',
+                fontSize: '0.9rem',
+                color: '#666',
+                marginTop: '1rem',
+              }}>
+                {program.category}
+              </div>
+            )}
+            <Link
+              href={`/programs/${encodeURIComponent(program.name)}`}
+              style={{
+                display: 'block',
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '0.75rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              <div style={{ marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', margin: 0, marginBottom: '0.5rem' }}>
+                  {program.name}
+                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#666' }}>
+                  <span>{program.activeCount} active</span>
+                  {program.count !== program.activeCount && (
+                    <span>({program.count - program.activeCount} removed)</span>
+                  )}
+                </div>
+                {program.start_date && (
+                  <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.25rem' }}>
+                    Start: {new Date(program.start_date).toLocaleDateString()}
+                  </div>
+                )}
+                {program.notes && (
+                  <div style={{ 
+                    fontSize: '0.813rem', 
+                    color: '#666', 
+                    marginTop: '0.5rem',
+                    fontStyle: 'italic',
+                    padding: '0.5rem',
+                    backgroundColor: '#fef3c7',
+                    borderRadius: '4px',
+                  }}>
+                    {program.notes}
+                  </div>
+                )}
+              </div>
+              
+              {/* Status and Edit - not clickable for link */}
+              <div 
+                onClick={(e) => e.preventDefault()}
+                style={{ 
+                  display: 'flex', 
+                  gap: '0.5rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #e5e7eb'
+                }}
+              >
+                <select
+                  value={program.status}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    saveStatus(program.name, e.target.value)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    backgroundColor: program.status === 'open_registration' ? '#f0fdf4' : 
+                                     program.status === 'in_progress' ? '#fef9c3' : 
+                                     program.status === 'archived' ? '#fafafa' : '#f3f4f6',
+                  }}
+                >
+                  <option value="open_registration">Open Registration</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    openEditModal(program)
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                  }}
+                  title="Edit start date and notes"
+                >
+                  ✏️
+                </button>
+              </div>
+            </Link>
+          </div>
+        )
+      }
+      
+      // Desktop Row View
       return (
         <div key={program.name}>
           {showCategoryHeader && (
@@ -488,7 +618,7 @@ export default function ProgramsPage() {
         </div>
       )
     })
-  }, [programs])
+  }, [programs, isMobile])
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>

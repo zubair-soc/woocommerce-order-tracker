@@ -29,6 +29,7 @@ export default function ProgramRosterPage() {
   const [allPrograms, setAllPrograms] = useState<string[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [showRemoved, setShowRemoved] = useState(false)
   const [showAllProgramsInMove, setShowAllProgramsInMove] = useState(false)
@@ -424,6 +425,16 @@ export default function ProgramRosterPage() {
   useEffect(() => {
     fetchRegistrations()
   }, [programName])
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const activeCount = registrations.filter(r => r.status === 'active').length
   const removedCount = registrations.filter(r => r.status === 'removed' || r.status === 'transferred_out').length
