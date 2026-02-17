@@ -374,20 +374,23 @@ export default function ProgramsPage() {
                 {program.category}
               </div>
             )}
-            <Link
-              href={`/programs/${encodeURIComponent(program.name)}`}
-              style={{
-                display: 'block',
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                padding: '1rem',
-                marginBottom: '0.75rem',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                textDecoration: 'none',
-                color: 'inherit',
-              }}
-            >
-              <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '0.75rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            }}>
+              {/* Clickable area - program details */}
+              <Link
+                href={`/programs/${encodeURIComponent(program.name)}`}
+                style={{
+                  display: 'block',
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  marginBottom: '0.75rem',
+                }}
+              >
                 <h3 style={{ fontSize: '1.1rem', fontWeight: '600', margin: 0, marginBottom: '0.5rem' }}>
                   {program.name}
                 </h3>
@@ -415,26 +418,20 @@ export default function ProgramsPage() {
                     {program.notes}
                   </div>
                 )}
-              </div>
+              </Link>
               
-              {/* Status and Edit - not clickable for link */}
-              <div 
-                onClick={(e) => e.preventDefault()}
-                style={{ 
-                  display: 'flex', 
-                  gap: '0.5rem',
-                  paddingTop: '0.75rem',
-                  borderTop: '1px solid #e5e7eb'
-                }}
-              >
+              {/* Status and Edit - separate from link */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '0.5rem',
+                paddingTop: '0.75rem',
+                borderTop: '1px solid #e5e7eb'
+              }}>
                 <select
                   value={program.status}
                   onChange={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
                     saveStatus(program.name, e.target.value)
                   }}
-                  onClick={(e) => e.stopPropagation()}
                   style={{
                     flex: 1,
                     padding: '0.5rem',
@@ -454,8 +451,6 @@ export default function ProgramsPage() {
                 </select>
                 <button
                   onClick={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
                     openEditModal(program)
                   }}
                   style={{
@@ -471,7 +466,7 @@ export default function ProgramsPage() {
                   ✏️
                 </button>
               </div>
-            </Link>
+            </div>
           </div>
         )
       }
