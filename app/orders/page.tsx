@@ -1241,13 +1241,103 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Payment info */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Payment info and Total */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <div style={{ fontSize: '0.875rem', color: '#666' }}>
                     Payment: <strong>{order.payment_method_title || order.payment_method}</strong>
                   </div>
                   <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
                     ${order.total}
+                  </div>
+                </div>
+
+                {/* Action buttons: Unpaid checkbox and Installments */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  {/* Unpaid checkbox */}
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={order.payment_status === 'unpaid'}
+                      onChange={async (e) => {
+                        const newStatus = e.target.checked ? 'unpaid' : 'paid'
+                        
+                        // Update via API
+                        await fetch('/api/orders', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            order_id: order.order_id,
+                            payment_status: newStatus,
+                          }),
+                        })
+                        
+                        // Update local state
+                        setOrders(orders.map(o => 
+                          o.order_id === order.order_id 
+                            ? { ...o, payment_status: newStatus } 
+                            : o
+                        ))
+                        setFilteredOrders(filteredOrders.map(o => 
+                          o.order_id === order.order_id 
+                            ? { ...o, payment_status: newStatus } 
+                            : o
+                        ))
+                      }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        accentColor: '#dc2626',
+                      }}
+                    />
+                    <span style={{ color: '#6b7280' }}>Unpaid</span>
+                  </label>
+
+                  {/* Installments button */}
+                  <div>
+                    {order.has_installments ? (
+                      <button
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          borderRadius: '6px',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          fontWeight: '500',
+                          border: 'none',
+                        }}
+                      >
+                        💰 Payment Plan
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          color: '#3b82f6',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          padding: '0.5rem 1rem',
+                        }}
+                      >
+                        + Add Installments
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
