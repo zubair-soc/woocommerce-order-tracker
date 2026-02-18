@@ -13,9 +13,7 @@ export default function Home() {
   const [showDebug, setShowDebug] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
-  
-  // Filter states
-  const [searchTerm, setSearchTerm] = useState('')
+  const [transferDestinations, setTransferDestinations] = useState<{[orderId: number]: string[]}>({})
   const [statusFilter, setStatusFilter] = useState('')
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('')
   const [selectedCourses, setSelectedCourses] = useState<string[]>([])
@@ -99,13 +97,25 @@ export default function Home() {
     if (ordersData && ordersData.length > 0) {
       const { data: transferredRegs, error: transferError } = await supabase
         .from('program_registrations')
-        .select('order_id')
+        .select('order_id, program_name')
         .eq('source', 'transfer')
         .in('order_id', ordersData.map(o => o.order_id))
       
       if (!transferError && transferredRegs) {
         const transferredOrderIds = new Set(transferredRegs.map(r => r.order_id))
         setOrdersWithTransfers(transferredOrderIds)
+        
+        // Build map of order_id -> list of program names they transferred to
+        const destinations: {[orderId: number]: string[]} = {}
+        transferredRegs.forEach(reg => {
+          if (!destinations[reg.order_id]) {
+            destinations[reg.order_id] = []
+          }
+          if (!destinations[reg.order_id].includes(reg.program_name)) {
+            destinations[reg.order_id].push(reg.program_name)
+          }
+        })
+        setTransferDestinations(destinations)
       }
     }
     
@@ -1282,16 +1292,20 @@ export default function Home() {
                 {/* Order number and date */}
                 <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <span>#{order.order_number} • {new Date(order.date_created).toLocaleDateString()}</span>
-                  {ordersWithTransfers.has(order.order_id) && (
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.125rem 0.5rem',
-                      borderRadius: '12px',
-                      backgroundColor: '#fef3c7',
-                      color: '#92400e',
-                      fontWeight: '600',
-                    }}>
-                      🔄 Has Transfers
+                  {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
+                    <span 
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '12px',
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        fontWeight: '600',
+                        cursor: 'help',
+                      }}
+                      title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
+                    >
+                      🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
                     </span>
                   )}
                 </div>
@@ -1448,17 +1462,21 @@ export default function Home() {
                     <td style={tableCellStyle}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span>#{order.order_number}</span>
-                        {ordersWithTransfers.has(order.order_id) && (
-                          <span style={{
-                            fontSize: '0.75rem',
-                            padding: '0.125rem 0.5rem',
-                            borderRadius: '12px',
-                            backgroundColor: '#fef3c7',
-                            color: '#92400e',
-                            fontWeight: '600',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            🔄 Transfer
+                        {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
+                          <span 
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.125rem 0.5rem',
+                              borderRadius: '12px',
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              fontWeight: '600',
+                              whiteSpace: 'nowrap',
+                              cursor: 'help',
+                            }}
+                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
+                          >
+                            🔄 {transferDestinations[order.order_id].length}x
                           </span>
                         )}
                       </div>
