@@ -12,6 +12,7 @@ export default function Home() {
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [showDebug, setShowDebug] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -22,6 +23,7 @@ export default function Home() {
   const [dateTo, setDateTo] = useState('')
   const [datePreset, setDatePreset] = useState('')
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
+  const [showTransfersOnly, setShowTransfersOnly] = useState(false)
   
   // UI state
   const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({})
@@ -91,6 +93,20 @@ export default function Home() {
       }
       
       setProducts(filteredProducts)
+    }
+    
+    // Fetch which orders have transfers (registrations with source='transfer')
+    if (ordersData && ordersData.length > 0) {
+      const { data: transferredRegs, error: transferError } = await supabase
+        .from('program_registrations')
+        .select('order_id')
+        .eq('source', 'transfer')
+        .in('order_id', ordersData.map(o => o.order_id))
+      
+      if (!transferError && transferredRegs) {
+        const transferredOrderIds = new Set(transferredRegs.map(r => r.order_id))
+        setOrdersWithTransfers(transferredOrderIds)
+      }
     }
     
     setLoading(false)
@@ -401,9 +417,14 @@ export default function Home() {
       )
     }
 
+    // Transfer filter - show only orders with transfers
+    if (showTransfersOnly) {
+      filtered = filtered.filter((order) => ordersWithTransfers.has(order.order_id))
+    }
+
     setFilteredOrders(filtered)
     setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders])
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers])
 
   // Get paginated orders
   const indexOfLastOrder = currentPage * ordersPerPage
@@ -805,6 +826,43 @@ export default function Home() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Has Transfers Filter */}
+          <div>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              cursor: 'pointer',
+              padding: '0.5rem 0',
+              fontWeight: '500'
+            }}>
+              <input
+                type="checkbox"
+                checked={showTransfersOnly}
+                onChange={(e) => setShowTransfersOnly(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: '#f59e0b',
+                }}
+              />
+              <span>Has Transfers</span>
+              {ordersWithTransfers.size > 0 && (
+                <span style={{
+                  fontSize: '0.875rem',
+                  color: '#f59e0b',
+                  backgroundColor: '#fef3c7',
+                  padding: '0.125rem 0.5rem',
+                  borderRadius: '12px',
+                  fontWeight: '600',
+                }}>
+                  {ordersWithTransfers.size}
+                </span>
+              )}
+            </label>
           </div>
 
           {/* Date Presets */}
@@ -1222,8 +1280,20 @@ export default function Home() {
                 </div>
 
                 {/* Order number and date */}
-                <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem' }}>
-                  #{order.order_number} • {new Date(order.date_created).toLocaleDateString()}
+                <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span>#{order.order_number} • {new Date(order.date_created).toLocaleDateString()}</span>
+                  {ordersWithTransfers.has(order.order_id) && (
+                    <span style={{
+                      fontSize: '0.75rem',
+                      padding: '0.125rem 0.5rem',
+                      borderRadius: '12px',
+                      backgroundColor: '#fef3c7',
+                      color: '#92400e',
+                      fontWeight: '600',
+                    }}>
+                      🔄 Has Transfers
+                    </span>
+                  )}
                 </div>
 
                 {/* Products */}
@@ -1375,7 +1445,24 @@ export default function Home() {
                     key={order.id}
                     style={{ borderBottom: '1px solid #eee' }}
                   >
-                    <td style={tableCellStyle}>#{order.order_number}</td>
+                    <td style={tableCellStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>#{order.order_number}</span>
+                        {ordersWithTransfers.has(order.order_id) && (
+                          <span style={{
+                            fontSize: '0.75rem',
+                            padding: '0.125rem 0.5rem',
+                            borderRadius: '12px',
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            🔄 Transfer
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={tableCellStyle}>
                       {new Date(order.date_created).toLocaleDateString()}
                     </td>
