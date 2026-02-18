@@ -14,6 +14,9 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false)
   const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
   const [transferDestinations, setTransferDestinations] = useState<{[orderId: number]: string[]}>({})
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('')
   const [selectedCourses, setSelectedCourses] = useState<string[]>([])
