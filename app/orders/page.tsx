@@ -610,15 +610,15 @@ export default function Home() {
           onClick={syncOrders}
           disabled={syncing}
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.75rem 1.5rem',
             backgroundColor: syncing ? '#ccc' : '#0070f3',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '0.9rem',
+            fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
-            whiteSpace: 'nowrap',
+            flex: '1 1 auto',
           }}
         >
           {syncing ? 'Syncing...' : '🔄 Sync Orders'}
@@ -627,15 +627,15 @@ export default function Home() {
         <button
           onClick={checkSyncStatus}
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.75rem 1.5rem',
             backgroundColor: '#f59e0b',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '0.9rem',
+            fontSize: '1rem',
             cursor: 'pointer',
             fontWeight: '500',
-            whiteSpace: 'nowrap',
+            flex: '1 1 auto',
           }}
         >
           🔍 Sync Status
@@ -644,17 +644,17 @@ export default function Home() {
         <a
           href="/credits"
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.75rem 1.5rem',
             backgroundColor: '#8b5cf6',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '0.9rem',
+            fontSize: '1rem',
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
             textAlign: 'center',
-            whiteSpace: 'nowrap',
+            flex: '1 1 auto',
           }}
         >
           💰 Credits
@@ -663,17 +663,17 @@ export default function Home() {
         <a
           href="/programs"
           style={{
-            padding: '0.75rem 1rem',
+            padding: '0.75rem 1.5rem',
             backgroundColor: '#10b981',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '0.9rem',
+            fontSize: '1rem',
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
             textAlign: 'center',
-            whiteSpace: 'nowrap',
+            flex: '1 1 auto',
           }}
         >
           📋 Programs
