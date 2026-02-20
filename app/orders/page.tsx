@@ -603,8 +603,8 @@ export default function Home() {
       <div style={{ 
         marginBottom: '2rem', 
         display: 'flex', 
-        gap: '1rem',
-        flexWrap: 'wrap', // Wrap on mobile
+        gap: '0.75rem',
+        flexWrap: 'wrap',
       }}>
         <button
           onClick={syncOrders}
@@ -618,11 +618,10 @@ export default function Home() {
             fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
-            flex: '1 1 auto', // Flexible sizing
-            minWidth: '200px', // Minimum width before wrapping
+            flex: '1 1 auto',
           }}
         >
-          {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
+          {syncing ? 'Syncing...' : '🔄 Sync Orders'}
         </button>
 
         <button
@@ -637,11 +636,29 @@ export default function Home() {
             cursor: 'pointer',
             fontWeight: '500',
             flex: '1 1 auto',
-            minWidth: '180px',
           }}
         >
-          🔍 Check Sync Status
+          🔍 Sync Status
         </button>
+
+        <a
+          href="/credits"
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#8b5cf6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            textDecoration: 'none',
+            fontWeight: '500',
+            display: 'inline-block',
+            textAlign: 'center',
+            flex: '1 1 auto',
+          }}
+        >
+          💰 Credits
+        </a>
 
         <a
           href="/programs"
@@ -655,12 +672,11 @@ export default function Home() {
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
-            flex: '1 1 auto',
-            minWidth: '180px',
             textAlign: 'center',
+            flex: '1 1 auto',
           }}
         >
-          📋 Manage Programs
+          📋 Programs
         </a>
       </div>
 
@@ -1463,27 +1479,17 @@ export default function Home() {
                     style={{ borderBottom: '1px solid #eee' }}
                   >
                     <td style={tableCellStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span>#{order.order_number}</span>
                         {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
                           <span 
                             style={{
-                              fontSize: '0.75rem',
-                              padding: '0.125rem 0.5rem',
-                              borderRadius: '12px',
-                              backgroundColor: '#fef3c7',
-                              color: '#92400e',
-                              fontWeight: '600',
-                              whiteSpace: 'nowrap',
+                              fontSize: '0.875rem',
+                              cursor: 'help',
                             }}
+                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
                           >
-<<<<<<< HEAD
-                            🔄 {transferDestinations[order.order_id].length === 1 
-                              ? transferDestinations[order.order_id][0] 
-                              : `${transferDestinations[order.order_id].length} programs`}
-=======
                             🔄
->>>>>>> parent of 45fe8e4 (refunds update)
                           </span>
                         )}
                       </div>
