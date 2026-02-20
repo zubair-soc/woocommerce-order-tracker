@@ -12,13 +12,11 @@ interface Credit {
   reason: string
   created_by: string
   created_at: string
-  status: 'active' | 'used' | 'deleted'
+  status: 'active' | 'used'
   used_by?: string
   used_at?: string
   used_on_program?: string
   notes?: string
-  deleted_by?: string
-  deleted_at?: string
 }
 
 export default function CreditsPage() {
@@ -27,7 +25,6 @@ export default function CreditsPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showUsed, setShowUsed] = useState(false)
-  const [showDeleted, setShowDeleted] = useState(false)
   
   // Form state
   const [playerName, setPlayerName] = useState('')
@@ -124,14 +121,9 @@ export default function CreditsPage() {
     const signOff = prompt(`Enter your name to confirm deleting credit for ${playerName}:`)
     if (!signOff) return
 
-    // Soft delete - mark as deleted instead of actually deleting
     const { error } = await supabase
       .from('customer_credits')
-      .update({
-        status: 'deleted',
-        deleted_by: signOff,
-        deleted_at: new Date().toISOString()
-      })
+      .delete()
       .eq('id', id)
     
     if (error) {
@@ -147,21 +139,13 @@ export default function CreditsPage() {
       credit.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       credit.player_email?.toLowerCase().includes(searchTerm.toLowerCase())
     
-    let matchesStatus = true
-    if (!showUsed && !showDeleted) {
-      matchesStatus = credit.status === 'active'
-    } else if (showUsed && !showDeleted) {
-      matchesStatus = credit.status === 'active' || credit.status === 'used'
-    } else if (showDeleted) {
-      matchesStatus = true // Show all including deleted
-    }
+    const matchesStatus = showUsed || credit.status === 'active'
     
     return matchesSearch && matchesStatus
   })
 
-  const activeCredits = credits.filter(c => c.status === 'active')
-  const usedCredits = credits.filter(c => c.status === 'used')
-  const deletedCredits = credits.filter(c => c.status === 'deleted')
+  const activeCredits = filteredCredits.filter(c => c.status === 'active')
+  const usedCredits = filteredCredits.filter(c => c.status === 'used')
   const totalActiveAmount = activeCredits.reduce((sum, c) => sum + c.amount, 0)
 
   return (
@@ -214,10 +198,6 @@ export default function CreditsPage() {
           <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.25rem' }}>Used Credits</div>
           <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#6b7280' }}>{usedCredits.length}</div>
         </div>
-        <div>
-          <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.25rem' }}>Deleted</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#ef4444' }}>{deletedCredits.length}</div>
-        </div>
       </div>
 
       {/* Actions */}
@@ -269,22 +249,6 @@ export default function CreditsPage() {
             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
           />
           <span>Show Used Credits</span>
-        </label>
-
-        <label style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          cursor: 'pointer',
-          padding: '0.75rem',
-        }}>
-          <input
-            type="checkbox"
-            checked={showDeleted}
-            onChange={(e) => setShowDeleted(e.target.checked)}
-            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-          />
-          <span>Show Deleted Credits</span>
         </label>
       </div>
 
@@ -504,7 +468,7 @@ export default function CreditsPage() {
                         }}>
                           Active
                         </span>
-                      ) : credit.status === 'used' ? (
+                      ) : (
                         <div>
                           <span style={{
                             padding: '0.25rem 0.75rem',
@@ -521,25 +485,6 @@ export default function CreditsPage() {
                           </div>
                           <div style={{ fontSize: '0.75rem', color: '#666' }}>
                             {new Date(credit.used_at!).toLocaleDateString()}
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <span style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '12px',
-                            fontSize: '0.875rem',
-                            backgroundColor: '#fee2e2',
-                            color: '#991b1b',
-                            fontWeight: '600',
-                          }}>
-                            Deleted
-                          </span>
-                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
-                            By: {credit.deleted_by}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: '#666' }}>
-                            {new Date(credit.deleted_at!).toLocaleDateString()}
                           </div>
                         </div>
                       )}
