@@ -14,7 +14,6 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false)
   const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
   const [transferDestinations, setTransferDestinations] = useState<{[orderId: number]: string[]}>({})
-  const [refundedOrdersWithActiveRegs, setRefundedOrdersWithActiveRegs] = useState<Set<number>>(new Set())
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -26,7 +25,6 @@ export default function Home() {
   const [datePreset, setDatePreset] = useState('')
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
   const [showTransfersOnly, setShowTransfersOnly] = useState(false)
-  const [showRefundedWithActive, setShowRefundedWithActive] = useState(false)
   
   // UI state
   const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({})
@@ -121,21 +119,6 @@ export default function Home() {
           }
         })
         setTransferDestinations(destinations)
-      }
-      
-      // Detect refunded orders with active registrations
-      const refundedOrderIds = ordersData.filter(o => o.status === 'refunded').map(o => o.order_id)
-      if (refundedOrderIds.length > 0) {
-        const { data: activeRegs, error: activeRegsError } = await supabase
-          .from('program_registrations')
-          .select('order_id')
-          .eq('status', 'active')
-          .in('order_id', refundedOrderIds)
-        
-        if (!activeRegsError && activeRegs) {
-          const refundedWithActive = new Set(activeRegs.map(r => r.order_id))
-          setRefundedOrdersWithActiveRegs(refundedWithActive)
-        }
       }
     }
     
@@ -452,14 +435,9 @@ export default function Home() {
       filtered = filtered.filter((order) => ordersWithTransfers.has(order.order_id))
     }
 
-    // Refunded with active registrations filter
-    if (showRefundedWithActive) {
-      filtered = filtered.filter((order) => refundedOrdersWithActiveRegs.has(order.order_id))
-    }
-
     setFilteredOrders(filtered)
     setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers, showRefundedWithActive, refundedOrdersWithActiveRegs])
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers])
 
   // Get paginated orders
   const indexOfLastOrder = currentPage * ordersPerPage
@@ -625,8 +603,8 @@ export default function Home() {
       <div style={{ 
         marginBottom: '2rem', 
         display: 'flex', 
-        gap: '0.75rem',
-        flexWrap: 'wrap',
+        gap: '1rem',
+        flexWrap: 'wrap', // Wrap on mobile
       }}>
         <button
           onClick={syncOrders}
@@ -640,10 +618,11 @@ export default function Home() {
             fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
-            flex: '1 1 auto',
+            flex: '1 1 auto', // Flexible sizing
+            minWidth: '200px', // Minimum width before wrapping
           }}
         >
-          {syncing ? 'Syncing...' : '🔄 Sync Orders'}
+          {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
         </button>
 
         <button
@@ -658,29 +637,11 @@ export default function Home() {
             cursor: 'pointer',
             fontWeight: '500',
             flex: '1 1 auto',
+            minWidth: '180px',
           }}
         >
-          🔍 Sync Status
+          🔍 Check Sync Status
         </button>
-
-        <a
-          href="/credits"
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: '#8b5cf6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '1rem',
-            textDecoration: 'none',
-            fontWeight: '500',
-            display: 'inline-block',
-            textAlign: 'center',
-            flex: '1 1 auto',
-          }}
-        >
-          💰 Credits
-        </a>
 
         <a
           href="/programs"
@@ -694,11 +655,12 @@ export default function Home() {
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
-            textAlign: 'center',
             flex: '1 1 auto',
+            minWidth: '180px',
+            textAlign: 'center',
           }}
         >
-          📋 Programs
+          📋 Manage Programs
         </a>
       </div>
 
@@ -911,43 +873,6 @@ export default function Home() {
                   fontWeight: '600',
                 }}>
                   {ordersWithTransfers.size}
-                </span>
-              )}
-            </label>
-          </div>
-
-          {/* Refunded with Active Registrations Filter */}
-          <div>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem',
-              cursor: 'pointer',
-              padding: '0.5rem 0',
-              fontWeight: '500'
-            }}>
-              <input
-                type="checkbox"
-                checked={showRefundedWithActive}
-                onChange={(e) => setShowRefundedWithActive(e.target.checked)}
-                style={{
-                  width: '18px',
-                  height: '18px',
-                  cursor: 'pointer',
-                  accentColor: '#ef4444',
-                }}
-              />
-              <span>⚠️ Refunded (Active Regs)</span>
-              {refundedOrdersWithActiveRegs.size > 0 && (
-                <span style={{
-                  fontSize: '0.875rem',
-                  color: '#ef4444',
-                  backgroundColor: '#fee2e2',
-                  padding: '0.125rem 0.5rem',
-                  borderRadius: '12px',
-                  fontWeight: '600',
-                }}>
-                  {refundedOrdersWithActiveRegs.size}
                 </span>
               )}
             </label>
@@ -1386,30 +1311,6 @@ export default function Home() {
                       🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
                     </span>
                   )}
-                  {refundedOrdersWithActiveRegs.has(order.order_id) && (
-                    <span 
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '0.125rem 0.5rem',
-                        borderRadius: '12px',
-                        backgroundColor: '#fee2e2',
-                        color: '#991b1b',
-                        fontWeight: '600',
-                      }}
-                      title="This order was refunded but still has active registrations!"
-                    >
-                      ⚠️ Needs Action
-                    </span>
-                  )}
-                </div>
-                        fontWeight: '600',
-                        cursor: 'help',
-                      }}
-                      title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
-                    >
-                      🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
-                    </span>
-                  )}
                 </div>
 
                 {/* Products */}
@@ -1562,28 +1463,23 @@ export default function Home() {
                     style={{ borderBottom: '1px solid #eee' }}
                   >
                     <td style={tableCellStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span>#{order.order_number}</span>
                         {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
                           <span 
                             style={{
-                              fontSize: '0.875rem',
-                              cursor: 'help',
+                              fontSize: '0.75rem',
+                              padding: '0.125rem 0.5rem',
+                              borderRadius: '12px',
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              fontWeight: '600',
+                              whiteSpace: 'nowrap',
                             }}
-                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
                           >
-                            🔄
-                          </span>
-                        )}
-                        {refundedOrdersWithActiveRegs.has(order.order_id) && (
-                          <span 
-                            style={{
-                              fontSize: '0.875rem',
-                              cursor: 'help',
-                            }}
-                            title="Refunded order with active registrations - needs action!"
-                          >
-                            ⚠️
+                            🔄 {transferDestinations[order.order_id].length === 1 
+                              ? transferDestinations[order.order_id][0] 
+                              : `${transferDestinations[order.order_id].length} programs`}
                           </span>
                         )}
                       </div>
