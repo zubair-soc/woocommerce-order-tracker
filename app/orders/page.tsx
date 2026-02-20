@@ -644,6 +644,26 @@ export default function Home() {
         </button>
 
         <a
+          href="/credits"
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#8b5cf6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            textDecoration: 'none',
+            fontWeight: '500',
+            display: 'inline-block',
+            flex: '1 1 auto',
+            minWidth: '180px',
+            textAlign: 'center',
+          }}
+        >
+          💰 Credits
+        </a>
+
+        <a
           href="/programs"
           style={{
             padding: '0.75rem 1.5rem',
@@ -1463,7 +1483,7 @@ export default function Home() {
                     style={{ borderBottom: '1px solid #eee' }}
                   >
                     <td style={tableCellStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span>#{order.order_number}</span>
                         {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
                           <span 
@@ -1475,11 +1495,11 @@ export default function Home() {
                               color: '#92400e',
                               fontWeight: '600',
                               whiteSpace: 'nowrap',
-                              cursor: 'help',
                             }}
-                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
                           >
-                            🔄 {transferDestinations[order.order_id].length}x
+                            🔄 {transferDestinations[order.order_id].length === 1 
+                              ? transferDestinations[order.order_id][0] 
+                              : `${transferDestinations[order.order_id].length} programs`}
                           </span>
                         )}
                       </div>
