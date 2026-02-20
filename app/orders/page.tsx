@@ -603,61 +603,58 @@ export default function Home() {
       <div style={{ 
         marginBottom: '2rem', 
         display: 'flex', 
-        gap: '1rem',
-        flexWrap: 'wrap', // Wrap on mobile
+        gap: '0.75rem',
+        flexWrap: 'wrap',
       }}>
         <button
           onClick={syncOrders}
           disabled={syncing}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1rem',
             backgroundColor: syncing ? '#ccc' : '#0070f3',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
-            flex: '1 1 auto', // Flexible sizing
-            minWidth: '200px', // Minimum width before wrapping
+            whiteSpace: 'nowrap',
           }}
         >
-          {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
+          {syncing ? 'Syncing...' : '🔄 Sync Orders'}
         </button>
 
         <button
           onClick={checkSyncStatus}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1rem',
             backgroundColor: '#f59e0b',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             cursor: 'pointer',
             fontWeight: '500',
-            flex: '1 1 auto',
-            minWidth: '180px',
+            whiteSpace: 'nowrap',
           }}
         >
-          🔍 Check Sync Status
+          🔍 Sync Status
         </button>
 
         <a
           href="/credits"
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1rem',
             backgroundColor: '#8b5cf6',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
-            flex: '1 1 auto',
-            minWidth: '180px',
             textAlign: 'center',
+            whiteSpace: 'nowrap',
           }}
         >
           💰 Credits
@@ -666,21 +663,20 @@ export default function Home() {
         <a
           href="/programs"
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1rem',
             backgroundColor: '#10b981',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            fontSize: '1rem',
+            fontSize: '0.9rem',
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
-            flex: '1 1 auto',
-            minWidth: '180px',
             textAlign: 'center',
+            whiteSpace: 'nowrap',
           }}
         >
-          📋 Manage Programs
+          📋 Programs
         </a>
       </div>
 
