@@ -1479,23 +1479,17 @@ export default function Home() {
                     style={{ borderBottom: '1px solid #eee' }}
                   >
                     <td style={tableCellStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span>#{order.order_number}</span>
                         {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
                           <span 
                             style={{
-                              fontSize: '0.75rem',
-                              padding: '0.125rem 0.5rem',
-                              borderRadius: '12px',
-                              backgroundColor: '#fef3c7',
-                              color: '#92400e',
-                              fontWeight: '600',
-                              whiteSpace: 'nowrap',
+                              fontSize: '0.875rem',
+                              cursor: 'help',
                             }}
+                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
                           >
-                            🔄 {transferDestinations[order.order_id].length === 1 
-                              ? transferDestinations[order.order_id][0] 
-                              : `${transferDestinations[order.order_id].length} programs`}
+                            🔄
                           </span>
                         )}
                       </div>
