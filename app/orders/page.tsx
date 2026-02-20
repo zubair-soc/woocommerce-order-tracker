@@ -14,6 +14,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false)
   const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
   const [transferDestinations, setTransferDestinations] = useState<{[orderId: number]: string[]}>({})
+  const [refundedOrdersWithActiveRegs, setRefundedOrdersWithActiveRegs] = useState<Set<number>>(new Set())
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -25,6 +26,7 @@ export default function Home() {
   const [datePreset, setDatePreset] = useState('')
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
   const [showTransfersOnly, setShowTransfersOnly] = useState(false)
+  const [showRefundedWithActive, setShowRefundedWithActive] = useState(false)
   
   // UI state
   const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({})
@@ -119,6 +121,21 @@ export default function Home() {
           }
         })
         setTransferDestinations(destinations)
+      }
+      
+      // Detect refunded orders with active registrations
+      const refundedOrderIds = ordersData.filter(o => o.status === 'refunded').map(o => o.order_id)
+      if (refundedOrderIds.length > 0) {
+        const { data: activeRegs, error: activeRegsError } = await supabase
+          .from('program_registrations')
+          .select('order_id')
+          .eq('status', 'active')
+          .in('order_id', refundedOrderIds)
+        
+        if (!activeRegsError && activeRegs) {
+          const refundedWithActive = new Set(activeRegs.map(r => r.order_id))
+          setRefundedOrdersWithActiveRegs(refundedWithActive)
+        }
       }
     }
     
@@ -435,9 +452,14 @@ export default function Home() {
       filtered = filtered.filter((order) => ordersWithTransfers.has(order.order_id))
     }
 
+    // Refunded with active registrations filter
+    if (showRefundedWithActive) {
+      filtered = filtered.filter((order) => refundedOrdersWithActiveRegs.has(order.order_id))
+    }
+
     setFilteredOrders(filtered)
     setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers])
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers, showRefundedWithActive, refundedOrdersWithActiveRegs])
 
   // Get paginated orders
   const indexOfLastOrder = currentPage * ordersPerPage
@@ -894,6 +916,43 @@ export default function Home() {
             </label>
           </div>
 
+          {/* Refunded with Active Registrations Filter */}
+          <div>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              cursor: 'pointer',
+              padding: '0.5rem 0',
+              fontWeight: '500'
+            }}>
+              <input
+                type="checkbox"
+                checked={showRefundedWithActive}
+                onChange={(e) => setShowRefundedWithActive(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: '#ef4444',
+                }}
+              />
+              <span>⚠️ Refunded (Active Regs)</span>
+              {refundedOrdersWithActiveRegs.size > 0 && (
+                <span style={{
+                  fontSize: '0.875rem',
+                  color: '#ef4444',
+                  backgroundColor: '#fee2e2',
+                  padding: '0.125rem 0.5rem',
+                  borderRadius: '12px',
+                  fontWeight: '600',
+                }}>
+                  {refundedOrdersWithActiveRegs.size}
+                </span>
+              )}
+            </label>
+          </div>
+
           {/* Date Presets */}
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
@@ -1327,6 +1386,30 @@ export default function Home() {
                       🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
                     </span>
                   )}
+                  {refundedOrdersWithActiveRegs.has(order.order_id) && (
+                    <span 
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '12px',
+                        backgroundColor: '#fee2e2',
+                        color: '#991b1b',
+                        fontWeight: '600',
+                      }}
+                      title="This order was refunded but still has active registrations!"
+                    >
+                      ⚠️ Needs Action
+                    </span>
+                  )}
+                </div>
+                        fontWeight: '600',
+                        cursor: 'help',
+                      }}
+                      title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
+                    >
+                      🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
 
                 {/* Products */}
@@ -1490,6 +1573,17 @@ export default function Home() {
                             title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
                           >
                             🔄
+                          </span>
+                        )}
+                        {refundedOrdersWithActiveRegs.has(order.order_id) && (
+                          <span 
+                            style={{
+                              fontSize: '0.875rem',
+                              cursor: 'help',
+                            }}
+                            title="Refunded order with active registrations - needs action!"
+                          >
+                            ⚠️
                           </span>
                         )}
                       </div>
