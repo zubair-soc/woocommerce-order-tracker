@@ -1477,9 +1477,13 @@ export default function Home() {
                               whiteSpace: 'nowrap',
                             }}
                           >
+<<<<<<< HEAD
                             🔄 {transferDestinations[order.order_id].length === 1 
                               ? transferDestinations[order.order_id][0] 
                               : `${transferDestinations[order.order_id].length} programs`}
+=======
+                            🔄
+>>>>>>> parent of 45fe8e4 (refunds update)
                           </span>
                         )}
                       </div>
