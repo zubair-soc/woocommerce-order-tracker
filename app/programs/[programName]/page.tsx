@@ -29,7 +29,6 @@ export default function ProgramRosterPage() {
   const [allPrograms, setAllPrograms] = useState<string[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [showRemoved, setShowRemoved] = useState(false)
   const [showAllProgramsInMove, setShowAllProgramsInMove] = useState(false)
@@ -426,16 +425,6 @@ export default function ProgramRosterPage() {
     fetchRegistrations()
   }, [programName])
 
-  // Mobile detection
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
   const activeCount = registrations.filter(r => r.status === 'active').length
   const removedCount = registrations.filter(r => r.status === 'removed' || r.status === 'transferred_out').length
   
@@ -724,200 +713,7 @@ export default function ProgramRosterPage() {
           <div style={{ padding: '3rem', textAlign: 'center', color: '#666' }}>
             No registrations yet. Add players manually or sync from orders.
           </div>
-        ) : isMobile ? (
-          // Mobile Card View
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {displayedRegistrations.map((reg, index) => (
-              <div
-                key={reg.id}
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  opacity: reg.status === 'active' ? 1 : 0.6,
-                  border: reg.status === 'active' ? 'none' : '2px dashed #d1d5db',
-                }}
-              >
-                {/* Header: Number, Name, Status */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.25rem' }}>
-                      #{index + 1}
-                    </div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
-                      {reg.player_name}
-                    </h3>
-                  </div>
-                  <span style={{
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    backgroundColor: reg.status === 'active' ? '#dcfce7' : 
-                                     reg.status === 'transferred_out' ? '#fef3c7' : '#fee2e2',
-                    color: reg.status === 'active' ? '#166534' : 
-                           reg.status === 'transferred_out' ? '#92400e' : '#991b1b',
-                  }}>
-                    {reg.status}
-                  </span>
-                </div>
-
-                {/* Email */}
-                {reg.player_email && (
-                  <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem' }}>
-                    📧 {reg.player_email}
-                  </div>
-                )}
-
-                {/* Payment Info Box */}
-                <div style={{ 
-                  padding: '0.75rem',
-                  backgroundColor: '#f9fafb',
-                  borderLeft: '4px solid #3b82f6',
-                  borderRadius: '4px',
-                  marginBottom: '0.75rem'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.875rem', color: '#666' }}>
-                      {reg.source === 'transfer' && reg.order_id ? (
-                        <span>Transfer (Order #{reg.order_id})</span>
-                      ) : reg.source === 'order' ? (
-                        <span>Order #{reg.order_id}</span>
-                      ) : (
-                        <span style={{ textTransform: 'capitalize' }}>{reg.payment_method}</span>
-                      )}
-                    </span>
-                    <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
-                      ${reg.amount}
-                    </span>
-                  </div>
-                  <div style={{
-                    display: 'inline-block',
-                    padding: '0.25rem 0.5rem',
-                    borderRadius: '4px',
-                    fontSize: '0.813rem',
-                    backgroundColor: reg.source === 'order' ? '#dbeafe' : '#fef3c7',
-                    color: reg.source === 'order' ? '#1e40af' : '#92400e',
-                  }}>
-                    {reg.source}
-                  </div>
-                </div>
-
-                {/* Notes if present */}
-                {reg.notes && (
-                  <div style={{ 
-                    fontSize: '0.813rem', 
-                    color: '#666', 
-                    marginBottom: '0.75rem',
-                    fontStyle: 'italic',
-                    padding: '0.5rem',
-                    backgroundColor: '#fffbeb',
-                    borderRadius: '4px',
-                  }}>
-                    💬 {reg.notes}
-                  </div>
-                )}
-
-                {/* Actions Row */}
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '0.5rem',
-                  paddingTop: '0.75rem',
-                  borderTop: '1px solid #e5e7eb',
-                  flexWrap: 'wrap',
-                }}>
-                  {/* Unpaid checkbox */}
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '0.5rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    flex: '1 1 auto',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={reg.payment_status === 'unpaid'}
-                      onChange={async (e) => {
-                        const newStatus = e.target.checked ? 'unpaid' : 'paid'
-                        const { error } = await supabase
-                          .from('program_registrations')
-                          .update({ payment_status: newStatus })
-                          .eq('id', reg.id)
-                        
-                        if (!error) {
-                          fetchRegistrations()
-                        }
-                      }}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        cursor: 'pointer',
-                        accentColor: '#dc2626',
-                      }}
-                    />
-                    <span style={{ color: '#6b7280' }}>Unpaid</span>
-                  </label>
-
-                  {/* Action Buttons */}
-                  <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => {
-                        setEditingPlayer(reg)
-                        setEditName(reg.player_name)
-                        setEditEmail(reg.player_email || '')
-                        setEditPaymentMethod(reg.payment_method)
-                        setEditAmount(reg.amount)
-                        setEditNotes(reg.notes || '')
-                      }}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        backgroundColor: '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setMovingPlayer(reg)}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        backgroundColor: '#8b5cf6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      Move
-                    </button>
-                    <button
-                      onClick={() => reg.status === 'active' ? removeRegistration(reg.id, reg.player_name) : restoreRegistration(reg.id, reg.player_name)}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        backgroundColor: reg.status === 'active' ? '#ef4444' : '#10b981',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      {reg.status === 'active' ? 'Remove' : 'Restore'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         ) : (
-          // Desktop Table View
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#f9f9f9' }}>
@@ -1101,7 +897,7 @@ export default function ProgramRosterPage() {
             overflowY: 'auto',
           }}>
             <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: '600' }}>
-              {editingPlayer.source === 'manual' ? 'Edit Player' : 'View Player Details'}
+              Edit Player
             </h3>
             
             <div style={{ marginBottom: '1rem' }}>
@@ -1245,13 +1041,12 @@ export default function ProgramRosterPage() {
                   cursor: 'pointer',
                 }}
               >
-                {editingPlayer.source === 'manual' ? 'Cancel' : 'Close'}
+                Cancel
               </button>
-              {editingPlayer.source === 'manual' && (
-                <button
-                  onClick={saveEdit}
-                  style={{
-                    padding: '0.5rem 1rem',
+              <button
+                onClick={saveEdit}
+                style={{
+                  padding: '0.5rem 1rem',
                     backgroundColor: '#0070f3',
                     color: 'white',
                     border: 'none',
@@ -1261,7 +1056,6 @@ export default function ProgramRosterPage() {
                 >
                   Save Changes
                 </button>
-              )}
             </div>
           </div>
         </div>
