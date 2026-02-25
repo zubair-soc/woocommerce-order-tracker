@@ -9,6 +9,11 @@ export default function Home() {
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [showDebug, setShowDebug] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [ordersWithTransfers, setOrdersWithTransfers] = useState<Set<number>>(new Set())
+  const [transferDestinations, setTransferDestinations] = useState<{[orderId: number]: string[]}>({})
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -19,6 +24,7 @@ export default function Home() {
   const [dateTo, setDateTo] = useState('')
   const [datePreset, setDatePreset] = useState('')
   const [programFilter, setProgramFilter] = useState<'active' | 'all'>('active')
+  const [showTransfersOnly, setShowTransfersOnly] = useState(false)
   
   // UI state
   const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({})
@@ -88,6 +94,32 @@ export default function Home() {
       }
       
       setProducts(filteredProducts)
+    }
+    
+    // Fetch which orders have transfers (registrations with source='transfer')
+    if (ordersData && ordersData.length > 0) {
+      const { data: transferredRegs, error: transferError } = await supabase
+        .from('program_registrations')
+        .select('order_id, program_name')
+        .eq('source', 'transfer')
+        .in('order_id', ordersData.map(o => o.order_id))
+      
+      if (!transferError && transferredRegs) {
+        const transferredOrderIds = new Set(transferredRegs.map(r => r.order_id))
+        setOrdersWithTransfers(transferredOrderIds)
+        
+        // Build map of order_id -> list of program names they transferred to
+        const destinations: {[orderId: number]: string[]} = {}
+        transferredRegs.forEach(reg => {
+          if (!destinations[reg.order_id]) {
+            destinations[reg.order_id] = []
+          }
+          if (!destinations[reg.order_id].includes(reg.program_name)) {
+            destinations[reg.order_id].push(reg.program_name)
+          }
+        })
+        setTransferDestinations(destinations)
+      }
     }
     
     setLoading(false)
@@ -215,17 +247,22 @@ export default function Home() {
   const syncOrders = async () => {
     setSyncing(true)
     try {
-      const response = await fetch('/api/sync-orders', {
+      // Add timestamp to bust cache
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/sync-orders?t=${timestamp}`, {
         cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         },
       })
       const result = await response.json()
       
       if (result.success) {
         alert(`Successfully synced ${result.orderCount} orders!`)
-        fetchOrders()
+        // Force a complete refresh of orders data
+        await fetchOrders()
       } else {
         alert('Failed to sync orders: ' + result.error)
       }
@@ -233,6 +270,26 @@ export default function Home() {
       alert('Error syncing orders: ' + error)
     }
     setSyncing(false)
+  }
+
+  // Debug sync status
+  const checkSyncStatus = async () => {
+    try {
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/debug-sync?t=${timestamp}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      })
+      const result = await response.json()
+      setDebugInfo(result)
+      setShowDebug(true)
+    } catch (error) {
+      alert('Error checking sync status: ' + error)
+    }
   }
 
   // Handle date preset selection
@@ -373,6 +430,11 @@ export default function Home() {
       )
     }
 
+    // Transfer filter - show only orders with transfers
+    if (showTransfersOnly) {
+      filtered = filtered.filter((order) => ordersWithTransfers.has(order.order_id))
+    }
+
     // Filter out merchandise when "Active Programs Only" is selected
     if (programFilter === 'active') {
       filtered = filtered.filter((order) => {
@@ -383,7 +445,7 @@ export default function Home() {
 
     setFilteredOrders(filtered)
     setCurrentPage(1) // Reset to page 1 when filters change
-  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, programFilter])
+  }, [searchTerm, statusFilter, paymentTypeFilter, selectedCourses, dateFrom, dateTo, orders, showTransfersOnly, ordersWithTransfers, programFilter])
 
   // Get paginated orders
   const indexOfLastOrder = currentPage * ordersPerPage
@@ -516,6 +578,16 @@ export default function Home() {
 
   useEffect(() => {
     fetchOrders()
+    
+    // Check if mobile on mount
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768)
+    }
+    checkMobile()
+    
+    // Listen for resize
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
   // Get unique statuses for filter dropdown
@@ -523,16 +595,25 @@ export default function Home() {
   const paymentTypes = Array.from(new Set(orders.map((o) => o.payment_method_title).filter(Boolean)))
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ 
+      padding: '1rem', // Mobile padding
+      maxWidth: '1400px', 
+      margin: '0 auto' 
+    }}>
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 'bold', marginBottom: '0.5rem' }}>
           📦 Orders
         </h1>
-        <p style={{ color: '#666' }}>WooCommerce order tracking and filtering</p>
+        <p style={{ color: '#666', fontSize: 'clamp(0.875rem, 2.5vw, 1rem)' }}>WooCommerce order tracking and filtering</p>
       </div>
 
       {/* Sync Button and Navigation */}
-      <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
+      <div style={{ 
+        marginBottom: '2rem', 
+        display: 'flex', 
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+      }}>
         <button
           onClick={syncOrders}
           disabled={syncing}
@@ -545,10 +626,47 @@ export default function Home() {
             fontSize: '1rem',
             cursor: syncing ? 'not-allowed' : 'pointer',
             fontWeight: '500',
+            flex: '1 1 auto',
           }}
         >
-          {syncing ? 'Syncing...' : '🔄 Sync Orders from WooCommerce'}
+          {syncing ? 'Syncing...' : '🔄 Sync Orders'}
         </button>
+
+        <button
+          onClick={checkSyncStatus}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#f59e0b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            fontWeight: '500',
+            flex: '1 1 auto',
+          }}
+        >
+          🔍 Sync Status
+        </button>
+
+        <a
+          href="/credits"
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#8b5cf6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            textDecoration: 'none',
+            fontWeight: '500',
+            display: 'inline-block',
+            textAlign: 'center',
+            flex: '1 1 auto',
+          }}
+        >
+          💰 Credits
+        </a>
 
         <a
           href="/programs"
@@ -562,11 +680,105 @@ export default function Home() {
             textDecoration: 'none',
             fontWeight: '500',
             display: 'inline-block',
+            textAlign: 'center',
+            flex: '1 1 auto',
           }}
         >
-          📋 Manage Programs
+          📋 Programs
         </a>
       </div>
+
+      {/* Debug Info Panel */}
+      {showDebug && debugInfo && (
+        <div
+          style={{
+            backgroundColor: 'white',
+            padding: '1.5rem',
+            borderRadius: '8px',
+            marginBottom: '2rem',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            border: debugInfo.comparison?.allInSync ? '2px solid #10b981' : '2px solid #ef4444',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>
+              🔍 Sync Status Debug Info
+            </h2>
+            <button
+              onClick={() => setShowDebug(false)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', // Responsive grid
+            gap: '1.5rem' 
+          }}>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#0070f3' }}>
+                WooCommerce (Latest 5)
+              </h3>
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Count:</strong> {debugInfo.wooCommerce.count}</p>
+                <p><strong>Latest Order ID:</strong> {debugInfo.wooCommerce.latestOrderId}</p>
+                <p><strong>Latest Order #:</strong> {debugInfo.wooCommerce.latestOrderNumber}</p>
+                <p><strong>Latest Date:</strong> {new Date(debugInfo.wooCommerce.latestOrderDate).toLocaleString()}</p>
+                <p><strong>Latest Status:</strong> {debugInfo.wooCommerce.latestOrderStatus}</p>
+                <p><strong>Order IDs:</strong> {debugInfo.wooCommerce.orderIds.join(', ')}</p>
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#10b981' }}>
+                Database (Latest 5)
+              </h3>
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Count:</strong> {debugInfo.supabase.count}</p>
+                <p><strong>Latest Order ID:</strong> {debugInfo.supabase.latestOrderId}</p>
+                <p><strong>Latest Order #:</strong> {debugInfo.supabase.latestOrderNumber}</p>
+                <p><strong>Latest Date:</strong> {debugInfo.supabase.latestOrderDate ? new Date(debugInfo.supabase.latestOrderDate).toLocaleString() : 'N/A'}</p>
+                <p><strong>Order IDs:</strong> {debugInfo.supabase.orderIds.join(', ')}</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              backgroundColor: debugInfo.comparison?.allInSync ? '#f0fdf4' : '#fef2f2',
+              borderRadius: '6px',
+              border: debugInfo.comparison?.allInSync ? '1px solid #10b981' : '1px solid #ef4444',
+            }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+              {debugInfo.comparison?.allInSync ? '✅ All In Sync!' : '❌ Sync Issue Detected'}
+            </h3>
+            {!debugInfo.comparison?.allInSync && (
+              <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                <p><strong>Missing in Database:</strong> Order IDs: {debugInfo.comparison.missingInSupabase.join(', ')}</p>
+                <p style={{ marginTop: '0.5rem', color: '#dc2626', fontWeight: '500' }}>
+                  ⚠️ Click "Sync Orders from WooCommerce" to fix this issue
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#9ca3af' }}>
+            Last checked: {new Date(debugInfo.timestamp).toLocaleString()}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div
@@ -651,6 +863,43 @@ export default function Home() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Has Transfers Filter */}
+          <div>
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              cursor: 'pointer',
+              padding: '0.5rem 0',
+              fontWeight: '500'
+            }}>
+              <input
+                type="checkbox"
+                checked={showTransfersOnly}
+                onChange={(e) => setShowTransfersOnly(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: '#f59e0b',
+                }}
+              />
+              <span>Has Transfers</span>
+              {ordersWithTransfers.size > 0 && (
+                <span style={{
+                  fontSize: '0.875rem',
+                  color: '#f59e0b',
+                  backgroundColor: '#fef3c7',
+                  padding: '0.125rem 0.5rem',
+                  borderRadius: '12px',
+                  fontWeight: '600',
+                }}>
+                  {ordersWithTransfers.size}
+                </span>
+              )}
+            </label>
           </div>
 
           {/* Date Presets */}
@@ -1037,9 +1286,186 @@ export default function Home() {
           <div style={{ padding: '3rem', textAlign: 'center', color: '#666' }}>
             No orders found. Click "Sync Orders" to fetch from WooCommerce.
           </div>
+        ) : isMobile ? (
+          // Mobile Card View
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {currentOrders.map((order) => (
+              <div
+                key={order.id}
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                }}
+              >
+                {/* Header: Name and Status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>
+                    {order.customer_first_name} {order.customer_last_name}
+                  </h3>
+                  <span style={{
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    backgroundColor: order.status === 'completed' ? '#dcfce7' : '#fef3c7',
+                    color: order.status === 'completed' ? '#166534' : '#92400e',
+                  }}>
+                    {order.status}
+                  </span>
+                </div>
+
+                {/* Order number and date */}
+                <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span>#{order.order_number} • {new Date(order.date_created).toLocaleDateString()}</span>
+                  {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
+                    <span 
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '12px',
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        fontWeight: '600',
+                        cursor: 'help',
+                      }}
+                      title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
+                    >
+                      🔄 Transferred to {transferDestinations[order.order_id].length} program{transferDestinations[order.order_id].length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+
+                {/* Products */}
+                <div style={{ 
+                  padding: '0.75rem',
+                  backgroundColor: '#f9fafb',
+                  borderLeft: '4px solid #3b82f6',
+                  borderRadius: '4px',
+                  marginBottom: '0.75rem'
+                }}>
+                  {order.products && Array.isArray(order.products) && order.products.map((product: any, idx: number) => (
+                    <div key={idx} style={{ fontSize: '0.875rem', marginBottom: idx < order.products.length - 1 ? '0.25rem' : 0 }}>
+                      {product.name} {product.quantity > 1 ? `(×${product.quantity})` : ''}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Payment info and Total */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div style={{ fontSize: '0.875rem', color: '#666' }}>
+                    Payment: <strong>{order.payment_method_title || order.payment_method}</strong>
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
+                    ${order.total}
+                  </div>
+                </div>
+
+                {/* Action buttons: Unpaid checkbox and Installments */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  {/* Unpaid checkbox */}
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={order.payment_status === 'unpaid'}
+                      onChange={async (e) => {
+                        const newStatus = e.target.checked ? 'unpaid' : 'paid'
+                        
+                        // Update via API
+                        await fetch('/api/orders', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            order_id: order.order_id,
+                            payment_status: newStatus,
+                          }),
+                        })
+                        
+                        // Update local state
+                        setOrders(orders.map(o => 
+                          o.order_id === order.order_id 
+                            ? { ...o, payment_status: newStatus } 
+                            : o
+                        ))
+                        setFilteredOrders(filteredOrders.map(o => 
+                          o.order_id === order.order_id 
+                            ? { ...o, payment_status: newStatus } 
+                            : o
+                        ))
+                      }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        accentColor: '#dc2626',
+                      }}
+                    />
+                    <span style={{ color: '#6b7280' }}>Unpaid</span>
+                  </label>
+
+                  {/* Installments button */}
+                  <div>
+                    {order.has_installments ? (
+                      <button
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          borderRadius: '6px',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          fontWeight: '500',
+                          border: 'none',
+                        }}
+                      >
+                        💰 Payment Plan
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => openInstallmentsModal(order)}
+                        style={{
+                          color: '#3b82f6',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          padding: '0.5rem 1rem',
+                        }}
+                      >
+                        + Add Installments
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          // Desktop Table View
+          <div style={{ 
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            position: 'relative',
+          }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              minWidth: '800px', // Ensure table doesn't compress too much
+            }}>
               <thead style={{ backgroundColor: '#f9f9f9' }}>
                 <tr>
                   <th style={tableHeaderStyle}>Order #</th>
@@ -1060,7 +1486,22 @@ export default function Home() {
                     key={order.id}
                     style={{ borderBottom: '1px solid #eee' }}
                   >
-                    <td style={tableCellStyle}>#{order.order_number}</td>
+                    <td style={tableCellStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>#{order.order_number}</span>
+                        {ordersWithTransfers.has(order.order_id) && transferDestinations[order.order_id] && (
+                          <span 
+                            style={{
+                              fontSize: '0.875rem',
+                              cursor: 'help',
+                            }}
+                            title={`Transferred to: ${transferDestinations[order.order_id].join(', ')}`}
+                          >
+                            🔄
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={tableCellStyle}>
                       {new Date(order.date_created).toLocaleDateString()}
                     </td>
